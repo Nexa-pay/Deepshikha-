@@ -1,9 +1,8 @@
-
-from openai import OpenAI
+import openai
 from config import OPENAI_API_KEY
-from database import users, chats
+from database import users
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+openai.api_key = OPENAI_API_KEY
 
 
 def build_prompt(user_id):
@@ -19,14 +18,14 @@ User: {name}
 Emotion: {emotion}
 
 Reply:
-- 1 short sentence
-- flirty, natural
+- 1 short flirty sentence
+- natural and human-like
 """
 
 
 async def generate_reply(user_id, text):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": build_prompt(user_id)},
             {"role": "user", "content": text[:200]}
@@ -34,19 +33,17 @@ async def generate_reply(user_id, text):
         max_tokens=30
     )
 
-    reply = response.choices[0].message.content
-
-    return reply
+    return response["choices"][0]["message"]["content"]
 
 
 async def detect_emotion(text):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "Return emotion: happy, sad, bored, flirty"},
+            {"role": "system", "content": "Reply only: happy, sad, bored, flirty"},
             {"role": "user", "content": text}
         ],
         max_tokens=5
     )
 
-    return response.choices[0].message.content.strip()
+    return response["choices"][0]["message"]["content"].strip()
