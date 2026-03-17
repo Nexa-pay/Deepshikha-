@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from telegram import Update
+from telegram.error import TimedOut
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -14,7 +15,7 @@ from database import users
 from ai import generate_reply, detect_emotion
 
 
-# ------------------ SAVE USER ------------------
+# ---------------- SAVE USER ----------------
 
 def save_user(update):
     user = update.message.from_user
@@ -32,60 +33,58 @@ def save_user(update):
     )
 
 
-# ------------------ START COMMAND ------------------
+# ---------------- START ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Hey… you came back 😌"
-    )
+    await safe_send(context, update.effective_chat.id, "Hey… you came back 😌")
 
 
-# ------------------ MESSAGE HANDLER ------------------
+# ---------------- SAFE SEND (FIX TIMEOUT) ----------------
+
+async def safe_send(context, chat_id, text):
+    for i in range(3):  # retry 3 times
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text)
+            return
+        except TimedOut:
+            print(f"Retrying send... ({i+1})")
+            await asyncio.sleep(2)
+        except Exception as e:
+            print("SEND ERROR:", e)
+            return
+
+
+# ---------------- MESSAGE ----------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("MESSAGE RECEIVED")
-
     if not update.message or not update.message.text:
-        print("NO MESSAGE")
         return
 
     user_id = update.message.from_user.id
     text = update.message.text
 
-    print("USER:", user_id)
-    print("TEXT:", text)
+    print("MESSAGE:", text)
 
-    # Save user
     save_user(update)
 
-    # Detect emotion
-    emotion = await detect_emotion(text)
-
-    users.update_one(
-        {"user_id": user_id},
-        {"$set": {"emotion": emotion}},
-        upsert=True
-    )
-
     try:
+        emotion = await detect_emotion(text)
+        users.update_one({"user_id": user_id}, {"$set": {"emotion": emotion}}, upsert=True)
+
         reply = await generate_reply(user_id, text)
-        print("AI REPLY:", reply)
+        print("AI:", reply)
 
         if not reply:
-            reply = "Hmm… say that again 😏"
+            reply = "Say that again 😏"
 
-        # ✅ FORCE SEND (FIXED)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=reply
-        )
+        # ✅ FIXED SEND
+        await safe_send(context, update.effective_chat.id, reply)
 
     except Exception as e:
-        print("SEND ERROR:", e)
+        print("ERROR:", e)
 
 
-# ------------------ MAIN ------------------
+# ---------------- MAIN ----------------
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
