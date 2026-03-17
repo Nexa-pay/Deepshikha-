@@ -8,7 +8,7 @@ from telegram.ext import (
     filters, ContextTypes
 )
 
-from config import TELEGRAM_TOKEN, OWNER_ID, GROUP_ID
+from config import TELEGRAM_TOKEN, OWNER_ID
 from database import users, tokens, admins
 from ai import generate_reply, detect_emotion
 
@@ -115,49 +115,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_relationship(user_id, text)
 
-    # human-like random reply
+    # human-like reply (30%)
     if random.random() > 0.3:
         return
 
-    reply = await generate_reply(user_id, text)
-
-    await update.message.reply_text(reply)
+    try:
+        reply = await generate_reply(user_id, text)
+        await update.message.reply_text(reply)
+    except Exception as e:
+        print("AI ERROR:", e)
 
 
 # ------------------ AUTO ENGAGEMENT ------------------
 
 async def auto_message(application):
     while True:
-        for user in users.find().limit(10):
-            last = user.get("last_active")
+        try:
+            for user in users.find().limit(10):
+                last = user.get("last_active")
 
-            if last and datetime.utcnow() - last > timedelta(hours=6):
-                try:
-                    await application.bot.send_message(
-                        user["user_id"],
-                        "You disappeared… I noticed 😏"
-                    )
-                except:
-                    pass
+                if last and datetime.utcnow() - last > timedelta(hours=6):
+                    try:
+                        await application.bot.send_message(
+                            user["user_id"],
+                            "You disappeared… I noticed 😏"
+                        )
+                        await asyncio.sleep(1)
+                    except:
+                        continue
+
+        except Exception as e:
+            print("AUTO MSG ERROR:", e)
 
         await asyncio.sleep(1800)
+
+
+# ------------------ ERROR HANDLER ------------------
+
+async def error_handler(update, context):
+    print("ERROR:", context.error)
 
 
 # ------------------ MAIN ------------------
 
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_TOKEN)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("redeem", redeem))
     app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
-    # ✅ FIX: run background task correctly
-    async def post_init(application):
-        application.create_task(auto_message(application))
+    app.add_error_handler(error_handler)
 
-    app.post_init = post_init
+    # ✅ FIX: proper background task start
+    async def on_startup(app):
+        asyncio.create_task(auto_message(app))
+
+    app.post_init = on_startup
 
     print("Bot running...")
     app.run_polling()
