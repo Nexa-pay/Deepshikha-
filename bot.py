@@ -2,10 +2,10 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters, ContextTypes
+    filters, ContextTypes
 )
 
 from config import TELEGRAM_TOKEN, OWNER_ID, GROUP_ID
@@ -57,6 +57,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def redeem(update, context):
     user_id = update.message.from_user.id
+
+    if not context.args:
+        await update.message.reply_text("Usage: /redeem CODE")
+        return
+
     code = context.args[0]
 
     token = tokens.find_one({"code": code})
@@ -75,6 +80,10 @@ async def broadcast(update, context):
     if not is_admin(update.message.from_user.id):
         return
 
+    if not context.args:
+        await update.message.reply_text("Usage: /broadcast message")
+        return
+
     msg = " ".join(context.args)
 
     for user in users.find():
@@ -88,6 +97,9 @@ async def broadcast(update, context):
 # ------------------ AUTO AI REPLY ------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
     user_id = update.message.from_user.id
     text = update.message.text
 
@@ -103,7 +115,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     update_relationship(user_id, text)
 
-    # only reply sometimes (human-like)
+    # human-like random reply
     if random.random() > 0.3:
         return
 
@@ -114,14 +126,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ------------------ AUTO ENGAGEMENT ------------------
 
-async def auto_message(context):
+async def auto_message(application):
     while True:
         for user in users.find().limit(10):
             last = user.get("last_active")
 
             if last and datetime.utcnow() - last > timedelta(hours=6):
                 try:
-                    await context.bot.send_message(
+                    await application.bot.send_message(
                         user["user_id"],
                         "You disappeared… I noticed 😏"
                     )
@@ -141,7 +153,11 @@ def main():
     app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
-    app.create_task(auto_message(app))
+    # ✅ FIX: run background task correctly
+    async def post_init(application):
+        application.create_task(auto_message(application))
+
+    app.post_init = post_init
 
     print("Bot running...")
     app.run_polling()
