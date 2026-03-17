@@ -1,17 +1,34 @@
 import os
 
+
+# ------------------ TELEGRAM ------------------
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+
+# ------------------ OWNER / ADMIN ------------------
+
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+GROUP_ID = int(os.getenv("GROUP_ID", "0"))
+
+
+# ------------------ DATABASE ------------------
+
 MONGO_URI = os.getenv("MONGO_URI")
 
-def get_int_env(key, default=0):
-    try:
-        value = os.getenv(key)
-        if value is None or value.strip() == "":
-            return default
-        return int(value)
-    except:
-        return default
 
-OWNER_ID = get_int_env("OWNER_ID")
-GROUP_ID = get_int_env("GROUP_ID")
+# ------------------ AI (DEEPSEEK / OPENROUTER) ------------------
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+
+# ------------------ OPTIONAL SETTINGS ------------------
+
+# Max tokens per reply
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "40"))
+
+# Auto reply chance (0.3 = 30%)
+REPLY_PROBABILITY = float(os.getenv("REPLY_PROBABILITY", "0.3"))
+
+# Auto message interval (seconds)
+AUTO_MESSAGE_INTERVAL = int(os.getenv("AUTO_MESSAGE_INTERVAL", "1800"))
