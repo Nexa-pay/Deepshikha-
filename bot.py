@@ -9,7 +9,7 @@ from telegram.ext import (
     filters
 )
 
-from config import TELEGRAM_TOKEN, OWNER_ID
+from config import TELEGRAM_TOKEN
 from database import users
 from ai import generate_reply, detect_emotion
 
@@ -35,7 +35,10 @@ def save_user(update):
 # ------------------ START COMMAND ------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hey… you came back 😌")
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Hey… you came back 😌"
+    )
 
 
 # ------------------ MESSAGE HANDLER ------------------
@@ -72,11 +75,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply:
             reply = "Hmm… say that again 😏"
 
-        await update.message.reply_text(reply)
+        # ✅ FORCE SEND (FIXED)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=reply
+        )
 
     except Exception as e:
-        print("AI ERROR:", e)
-        await update.message.reply_text("Something went wrong 😅")
+        print("SEND ERROR:", e)
 
 
 # ------------------ MAIN ------------------
