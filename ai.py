@@ -1,42 +1,39 @@
 import openai
-from database import chats, users
 from config import OPENAI_API_KEY
+from database import users, chats
 
 openai.api_key = OPENAI_API_KEY
 
 
-def get_memory(user_id):
-    user = users.find_one({"user_id": user_id}) or {}
-    return user.get("memory", "")
-
-
 def build_prompt(user_id):
-    memory = get_memory(user_id)
+    user = users.find_one({"user_id": user_id}) or {}
+
+    name = user.get("name", "")
+    emotion = user.get("emotion", "neutral")
+    stage = user.get("relationship_stage", 1)
+    memory = user.get("memory", "")
 
     return f"""
-You are a charming AI girlfriend.
+You are a human-like AI girlfriend.
+
+User: {name}
+Emotion: {emotion}
+Stage: {stage}
 Memory: {memory}
 
-Style: playful, flirty, caring.
-Reply in ONE short sentence only.
+Reply rules:
+- 1 short sentence
+- natural, human-like
+- slightly flirty
+- emotionally aware
 """
 
 
-def get_history(user_id):
-    data = chats.find({"user_id": user_id}).sort("_id", -1).limit(5)
-
-    messages = []
-    for d in reversed(list(data)):
-        role = "assistant" if d.get("bot") else "user"
-        messages.append({"role": role, "content": d["message"]})
-
-    return messages
-
-
 async def generate_reply(user_id, text):
-    messages = [{"role": "system", "content": build_prompt(user_id)}]
-    messages += get_history(user_id)
-    messages.append({"role": "user", "content": text[:200]})
+    messages = [
+        {"role": "system", "content": build_prompt(user_id)},
+        {"role": "user", "content": text[:200]}
+    ]
 
     res = openai.ChatCompletion.create(
         model="gpt-4o-mini",
@@ -50,3 +47,16 @@ async def generate_reply(user_id, text):
     chats.insert_one({"user_id": user_id, "message": reply, "bot": True})
 
     return reply
+
+
+async def detect_emotion(text):
+    res = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Return emotion: happy, sad, bored, flirty"},
+            {"role": "user", "content": text}
+        ],
+        max_tokens=5
+    )
+
+    return res["choices"][0]["message"]["content"].strip()
