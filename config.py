@@ -1,8 +1,20 @@
 import os
 
+# Core keys
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI")
 
-OWNER_ID = int(os.getenv("OWNER_ID"))
-GROUP_ID = int(os.getenv("GROUP_ID"))
+# Safe int parsing (prevents crash)
+def get_int_env(key, default=0):
+    try:
+        value = os.getenv(key)
+        if value is None or value.strip() == "":
+            return default
+        return int(value)
+    except:
+        return default
+
+# IDs (safe)
+OWNER_ID = get_int_env("OWNER_ID")
+GROUP_ID = get_int_env("GROUP_ID")
