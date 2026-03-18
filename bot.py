@@ -12,7 +12,7 @@ from telegram.ext import (
 
 from config import TELEGRAM_TOKEN
 from database import users
-from ai import generate_reply, detect_emotion
+from ai import generate_reply, detect_emotion, generate_tag_message
 
 
 # ---------------- GENDER DETECT ----------------
@@ -55,7 +55,7 @@ def save_user(update):
 # ---------------- SAFE SEND ----------------
 
 async def safe_send(context, chat_id, text):
-    for i in range(3):
+    for _ in range(3):
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -74,10 +74,10 @@ async def safe_send(context, chat_id, text):
 # ---------------- START ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send(context, update.effective_chat.id, "Hey… tum aa gaye 😌")
+    await safe_send(context, update.effective_chat.id, "Acha… tum aa gaye 😏")
 
 
-# ---------------- TAGALL (AI PERSONALIZED) ----------------
+# ---------------- TAGALL (FIXED SHORT AI) ----------------
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_list = list(users.find().limit(20))
@@ -87,9 +87,8 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uid = user["user_id"]
             name = user.get("name", "User")
 
-            prompt = f"Call {name} in group in fun teasing Hinglish way"
-
-            reply = await generate_reply(uid, prompt)
+            # 🔥 use dedicated short AI (IMPORTANT FIX)
+            reply = await generate_tag_message(name)
 
             message = f'<a href="tg://user?id={uid}">{name}</a>, {reply}'
 
@@ -99,7 +98,7 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML"
             )
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.7)
 
         except Exception as e:
             print("TAG ERROR:", e)
@@ -120,20 +119,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username.lower()
     bot_id = context.bot.id
 
-    # reply detect
+    # ---------------- REPLY DETECTION ----------------
     is_reply = False
     if update.message.reply_to_message:
         if update.message.reply_to_message.from_user.id == bot_id:
             is_reply = True
 
-    # group logic
+    # ---------------- GROUP LOGIC ----------------
     if chat_type in ["group", "supergroup"]:
         if f"@{bot_username}" not in text and "@admin" not in text and not is_reply:
             return
 
+    # ---------------- SAVE USER ----------------
     save_user(update)
 
     try:
+        # emotion tracking
         emotion = await detect_emotion(text)
 
         users.update_one(
@@ -142,11 +143,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             upsert=True
         )
 
+        # AI reply
         reply = await generate_reply(user_id, text)
 
         if not reply:
             reply = "Tum ajeeb ho 😏"
 
+        # ✅ ALWAYS mention user
         final = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
 
         await safe_send(context, update.effective_chat.id, final)
