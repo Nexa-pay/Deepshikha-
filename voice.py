@@ -2,7 +2,6 @@ import edge_tts
 import uuid
 import os
 import re
-import asyncio
 
 from config import VOICE_STYLE
 
@@ -13,7 +12,7 @@ def clean_text(text):
     if not text:
         return ""
 
-    # remove emojis / symbols
+    # remove emojis / weird chars
     text = re.sub(r"[^\w\s,.?!]", "", text)
 
     # fix dots
@@ -30,42 +29,77 @@ def clean_text(text):
 def naturalize_text(text):
     text = text.strip()
 
+    # fix punctuation flow
     text = text.replace("..", ".")
     text = text.replace("...", ".")
 
+    # better pauses
     text = text.replace("?", " ?")
     text = text.replace("!", ".")
 
+    # softer tone
     if VOICE_STYLE == "soft":
         text = text.replace(",", ".")
+        text = text.replace(" but ", " ... ")
+        text = text.replace(" because ", " ... ")
 
     return text
+
+
+# ================= REMOVE BAD STUFF =================
+
+def remove_actions(text):
+    """
+    remove:
+    *smiles*
+    (laughs)
+    _actions_
+    """
+    text = re.sub(r"\*.*?\*", "", text)
+    text = re.sub(r"\(.*?\)", "", text)
+    text = re.sub(r"_.*?_", "", text)
+
+    return text.strip()
 
 
 # ================= VOICE SELECT =================
 
 def get_voice():
-    # 🔥 BEST Hinglish female
+    # 🔥 BEST Indian female (natural Hinglish)
     return "en-IN-NeerjaNeural"
 
 
-# ================= ASYNC =================
+# ================= MAIN ASYNC =================
 
-async def text_to_voice_async(text, user_id):
+async def text_to_voice(text, user_id):
     try:
+        # 🔥 CLEAN PIPELINE
+        text = remove_actions(text)
         text = clean_text(text)
         text = naturalize_text(text)
 
-        if len(text) > 250:
-            text = text[:250]
+        if not text:
+            return None
+
+        # 🔥 limit size (important)
+        if len(text) > 200:
+            text = text[:200]
 
         filename = f"voice_{user_id}_{uuid.uuid4().hex[:6]}.mp3"
+
+        # 🔥 STYLE CONTROL
+        rate = "+10%"
+        pitch = "+2Hz"
+
+        if VOICE_STYLE == "soft":
+            rate = "+5%"
+            pitch = "+0Hz"
 
         communicate = edge_tts.Communicate(
             text=text,
             voice=get_voice(),
-            rate="+8%",
-            pitch="+2Hz"
+            rate=rate,
+            pitch=pitch
         )
 
         await communicate.save(filename)
@@ -75,16 +109,6 @@ async def text_to_voice_async(text, user_id):
     except Exception as e:
         print("Voice error:", e)
         return None
-
-
-# ================= SYNC WRAPPER =================
-
-def text_to_voice(text, user_id):
-    try:
-        return asyncio.run(text_to_voice_async(text, user_id))
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(text_to_voice_async(text, user_id))
 
 
 # ================= DELETE =================
