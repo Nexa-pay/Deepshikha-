@@ -5,7 +5,7 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ---------------- GENERATE REPLY ----------------
+# ---------------- MAIN AI REPLY ----------------
 
 async def generate_reply(user_id, text):
     try:
@@ -14,7 +14,7 @@ async def generate_reply(user_id, text):
         attachment = user_data.get("attachment", 0)
         gender = user_data.get("gender", "unknown")
 
-        # 💘 Attachment-based mood
+        # 💘 attachment-based mood
         if attachment > 50:
             mood = "deeply attached, caring, slightly possessive"
         elif attachment > 20:
@@ -22,37 +22,31 @@ async def generate_reply(user_id, text):
         else:
             mood = "friendly and curious"
 
-        # 👩 Gender-based tone
+        # 👩 gender behavior
         if gender == "male":
             tone = "talk like a cute girlfriend to a boy, flirty"
         elif gender == "female":
             tone = "talk like a friendly girl best friend, no flirting"
         else:
-            tone = "neutral friendly tone"
+            tone = "neutral friendly"
 
         system_prompt = f"""
 You are a real human chatting on Telegram.
 
 Rules:
-- Speak ONLY in Hinglish
+- Hinglish only
 - NO roleplay actions (*smiles*, etc)
-- Keep replies short (1–2 lines max)
-- Sound natural and human
+- Keep replies short (1–2 lines)
+- Sound natural
 
 Personality:
 - {mood}
 - {tone}
 
 Behavior:
-- Sometimes tease 😏
-- Sometimes care ❤️
-- Ask questions sometimes
-- Build emotional connection slowly
-
-Examples:
-Acha… itni der baad yaad aayi meri? 😏  
-Sach batao, kya kar rahe the?  
-Tum thode interesting ho 🙂
+- Slight teasing 😏
+- Sometimes caring ❤️
+- Ask small questions sometimes
 """
 
         headers = {
@@ -75,7 +69,7 @@ Tum thode interesting ho 🙂
 
         reply = result["choices"][0]["message"]["content"]
 
-        # 💘 Increase attachment
+        # 💘 increase attachment
         users.update_one(
             {"user_id": user_id},
             {"$inc": {"attachment": 2}},
@@ -86,7 +80,52 @@ Tum thode interesting ho 🙂
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "Tum phir confuse kar rahe ho 😏"
+        return "Acha phir se bolo na 😏"
+
+
+# ---------------- TAGALL AI ----------------
+
+async def generate_tag_message(name):
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        system_prompt = f"""
+Generate a SHORT Telegram tag message.
+
+Rules:
+- Hinglish only
+- MAX 1 short line
+- STRICT: under 10 words
+- NO roleplay actions (*smiles*, etc)
+- Keep it fun and engaging
+- Call the user "{name}"
+
+Examples:
+Rahul kaha ho bhai 😏  
+Aman group yaad hai kya  
+Rohit aaj chup kyun ho  
+"""
+
+        data = {
+            "model": "deepseek/deepseek-chat",
+            "messages": [
+                {"role": "system", "content": system_prompt}
+            ],
+            "temperature": 0.8,
+            "max_tokens": 30
+        }
+
+        res = requests.post(API_URL, headers=headers, json=data)
+        result = res.json()
+
+        return result["choices"][0]["message"]["content"].strip()
+
+    except Exception as e:
+        print("TAG ERROR:", e)
+        return f"{name}, group me aa jao 😏"
 
 
 # ---------------- EMOTION ----------------
@@ -94,13 +133,11 @@ Tum thode interesting ho 🙂
 async def detect_emotion(text):
     text = text.lower()
 
-    if any(w in text for w in ["sad", "alone", "depressed"]):
+    if any(w in text for w in ["sad", "alone"]):
         return "sad"
-
     if any(w in text for w in ["love", "miss"]):
         return "love"
-
-    if any(w in text for w in ["angry", "hate"]):
+    if any(w in text for w in ["angry"]):
         return "angry"
 
     return "normal"
