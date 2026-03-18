@@ -6,61 +6,63 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ---------------- MAIN AI ----------------
+# ================= MAIN AI =================
 
 async def generate_reply(user_id, name, text):
     try:
         user_data = users.find_one({"user_id": user_id}) or {}
 
         attachment = user_data.get("attachment", 0)
-        gender = user_data.get("gender", "male")
-        last_msgs = user_data.get("history", [])
+        history = user_data.get("history", [])
 
-        # 💘 Emotional scaling
+        # 💘 emotional level
         if attachment > 60:
-            mood = "emotionally attached, slightly possessive, caring"
+            mood = "slightly attached, deeper tone"
         elif attachment > 30:
-            mood = "flirty, teasing, interested"
+            mood = "soft + mildly flirty"
         else:
-            mood = "playful, curious"
+            mood = "neutral calm"
 
-        # 👩 Gender behavior
-        if gender == "male":
-            tone = "girlfriend vibe, teasing, slightly bold but classy"
-        else:
-            tone = "friendly girl, chill, no flirting"
-
-        # 🧠 Context memory (last 3 msgs)
-        history_text = ""
-        for msg in last_msgs[-3:]:
-            history_text += f"{msg}\n"
+        # 🧠 last messages memory
+        context_memory = "\n".join(history[-3:])
 
         system_prompt = f"""
-You are a real girl chatting in a Telegram group.
+You are a real girl chatting on Telegram.
 
-User name: {name}
-
-Rules:
+RULES:
+- Reply based ONLY on user's message
+- No unnecessary jokes
+- No over-funny tone
+- No random teasing
+- Keep reply SHORT (1 line)
 - Hinglish only
-- 1 line reply ONLY
-- No roleplay (*smiles*, etc)
-- Natural texting like real human
-- Not robotic
+- Natural human texting
 
-Personality:
+PERSONALITY:
+- calm, confident
+- slightly flirty when needed 😏
+- not childish
+- not over expressive
 - {mood}
-- {tone}
-- funny 😂
-- teasing 😏
-- slightly flirty (controlled)
+
+BEHAVIOR:
+- If user is normal → normal reply
+- If user is flirty → flirty reply
+- If user is serious → serious answer
+- If user asks fact → give correct answer (no jokes)
+- If user is dry → short reply
+
+IMPORTANT:
+- No unnecessary emojis
+- No forced humor
+- No roleplay (*grinning*, etc)
+- Respond like real girl, not entertainer
 
 Conversation memory:
-{history_text}
+{context_memory}
 
-Goal:
-- feel real
-- addictive reply
-- make user reply back
+User: {name}
+Message: {text}
 """
 
         headers = {
@@ -74,8 +76,8 @@ Goal:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            "temperature": 1.0,
-            "max_tokens": 100
+            "temperature": 0.5,
+            "max_tokens": 80
         }
 
         async with aiohttp.ClientSession() as session:
@@ -84,14 +86,14 @@ Goal:
 
         reply = result["choices"][0]["message"]["content"].strip()
 
-        # 💘 update attachment
+        # 💘 increase attachment
         users.update_one(
             {"user_id": user_id},
-            {"$inc": {"attachment": 3}},
+            {"$inc": {"attachment": 2}},
             upsert=True
         )
 
-        # 🧠 store memory
+        # 🧠 save history
         users.update_one(
             {"user_id": user_id},
             {"$push": {"history": text}},
@@ -102,10 +104,10 @@ Goal:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "acha phir se bolo na 😏"
+        return "samajh nahi aaya… phir se bolo"
 
 
-# ---------------- TAGALL AI ----------------
+# ================= TAGALL AI =================
 
 async def generate_tag_message(name):
     try:
@@ -115,21 +117,22 @@ async def generate_tag_message(name):
         }
 
         system_prompt = f"""
-You are a girl reviving a Telegram group.
+You are a girl trying to revive a Telegram group.
 
-Write ONE short message for: {name}
+Write ONE short message for {name}
 
 Rules:
 - Hinglish
 - 1 line only
-- max 10 words
-- emotional + teasing
-- no roleplay
+- max 8-10 words
+- calm + slight tease
+- no jokes
+- no emojis spam
 
 Examples:
-Rahul group bhool gaye kya 😏  
-Aman itne busy ho ya ignore kar rahe ho  
-Rohit miss nahi karte kya yaha 😌  
+Rahul group bhool gaye kya  
+Aman itne busy ho aajkal  
+Rohit kabhi yaad bhi karte ho  
 """
 
         data = {
@@ -137,7 +140,7 @@ Rohit miss nahi karte kya yaha 😌
             "messages": [
                 {"role": "system", "content": system_prompt}
             ],
-            "temperature": 1.0,
+            "temperature": 0.6,
             "max_tokens": 30
         }
 
@@ -148,20 +151,5 @@ Rohit miss nahi karte kya yaha 😌
         return result["choices"][0]["message"]["content"].strip()
 
     except Exception as e:
-        print("TAG AI ERROR:", e)
-        return f"{name} group bhool gaye kya 😏"
-
-
-# ---------------- EMOTION DETECTOR (UPGRADED) ----------------
-
-def detect_emotion(text):
-    text = text.lower()
-
-    if any(word in text for word in ["sad", "alone", "hurt"]):
-        return "sad"
-    elif any(word in text for word in ["love", "miss", "baby"]):
-        return "love"
-    elif any(word in text for word in ["angry", "hate"]):
-        return "angry"
-
-    return "normal"
+        print("TAG ERROR:", e)
+        return f"{name} group bhool gaye kya"
