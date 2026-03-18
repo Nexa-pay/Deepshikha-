@@ -2,6 +2,8 @@ import aiohttp
 import time
 import random
 import re
+from datetime import datetime
+import pytz
 
 from config import (
     OPENROUTER_API_KEY,
@@ -15,7 +17,15 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ================= NAME CLEANER =================
+# ================= TIME =================
+
+def is_night():
+    india = pytz.timezone("Asia/Kolkata")
+    hour = datetime.now(india).hour
+    return hour >= 23 or hour <= 5
+
+
+# ================= NAME CLEAN =================
 
 def clean_name(name):
     if not name:
@@ -50,19 +60,16 @@ def detect_reply_mood(reply):
     try:
         r = reply.lower()
 
-        if any(x in r for x in ["love", "miss", "baby", "jaan"]):
+        if any(x in r for x in ["love", "miss", "jaan"]):
             return "love"
-
-        if any(x in r for x in ["sad", "cry", "alone", "hurt"]):
+        if any(x in r for x in ["sad", "alone", "hurt"]):
             return "cry"
-
         if any(x in r for x in ["kiss", "mwah"]):
             return "kiss"
-
-        if any(x in r for x in ["angry", "attitude", "ignore"]):
+        if any(x in r for x in ["angry", "attitude"]):
             return "angry"
 
-        return random.choice(["cute", "love"])
+        return "cute"
 
     except:
         return "cute"
@@ -71,106 +78,89 @@ def detect_reply_mood(reply):
 # ================= TYPE =================
 
 def detect_type(text):
-    try:
-        t = text.lower()
+    t = text.lower()
 
-        if any(x in t for x in ["love", "miss", "baby", "jaan"]):
-            return "flirty"
+    if any(x in t for x in ["love", "miss", "baby", "jaan"]):
+        return "flirty"
 
-        if any(x in t for x in ["why", "what", "kaise", "kya"]):
-            return "question"
+    if any(x in t for x in ["why", "what", "kaise", "kya"]):
+        return "question"
 
-        if len(t.split()) <= 2:
-            return "dry"
+    if len(t.split()) <= 2:
+        return "dry"
 
-        return "normal"
-
-    except:
-        return "normal"
+    return "normal"
 
 
 # ================= SECRET MEMORY =================
 
 def extract_secrets(text):
-    try:
-        text = text.lower()
-        secrets = []
+    text = text.lower()
+    secrets = []
 
-        if len(text.split()) < 4:
-            return secrets
-
-        if any(x in text for x in ["gf", "bf", "breakup"]):
-            secrets.append({"type": "relationship", "value": text})
-
-        if any(x in text for x in ["sad", "alone", "hurt"]):
-            secrets.append({"type": "emotion", "value": text})
-
-        if any(x in text for x in ["i like", "mujhe pasand"]):
-            secrets.append({"type": "like", "value": text})
-
-        if any(x in text for x in ["exam", "job", "college"]):
-            secrets.append({"type": "life", "value": text})
-
+    if len(text.split()) < 4:
         return secrets
 
-    except:
-        return []
+    if any(x in text for x in ["gf", "bf", "breakup"]):
+        secrets.append({"type": "relationship", "value": text})
+
+    if any(x in text for x in ["sad", "alone", "hurt"]):
+        secrets.append({"type": "emotion", "value": text})
+
+    if any(x in text for x in ["i like", "mujhe pasand"]):
+        secrets.append({"type": "like", "value": text})
+
+    return secrets
 
 
-# ================= CLEAN REPLY =================
+# ================= CLEAN =================
 
 def clean_reply(reply):
-    # ❌ remove roleplay (*smiles*)
     reply = re.sub(r"\*.*?\*", "", reply)
-
-    # remove weird spacing
+    reply = re.sub(r"\(.*?\)", "", reply)
     reply = re.sub(r"\s+", " ", reply).strip()
 
     return reply
 
 
-# ================= FORCE SHORT =================
+# ================= SHORT CONTROL =================
 
 def force_short_reply(reply):
+    reply = reply.split("\n")[0]
     words = reply.split()
 
     if len(words) > 12:
         return random.choice([
-            "itna long kyun bol rahe ho 😏",
-            "short me bolo na 😌",
-            "seedha point pe aao 😏"
+            "seedha point pe aao 😏",
+            "itna long kyun bol rahe ho 😌",
+            "short me bolo na 😏"
         ])
 
-    return reply
+    return " ".join(words[:12])
 
 
-# ================= MAIN AI =================
+# ================= MAIN =================
 
 async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
         safe_name = clean_name(name)
 
-        # OWNER PROTECTION
+        # OWNER PROTECT
         if "owner" in text_lower:
-            return random.choice([
-                "owner ka kya karoge 😏",
-                "main hu na… owner chhodo 😌"
-            ])
+            return "owner ko chhodo… mujhpe focus karo 😏"
 
-        # NAME RESPONSE
-        if any(x in text_lower for x in ["mera naam", "my name", "what is my name"]):
+        # NAME
+        if any(x in text_lower for x in ["mera naam", "my name"]):
             if safe_name:
-                return f"tumhara naam {safe_name} hai 😏"
-            return "naam thoda unique hai tumhara 😏"
+                return f"naam toh yaad hai mujhe 😏"
+            return "naam thoda interesting hai tumhara 😌"
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
         history = user_data.get("history", [])
         secrets = user_data.get("secrets", [])
         relationship = int(user_data.get("relationship", 0))
-        attachment = int(user_data.get("attachment", 0))
-        ignore_count = int(user_data.get("ignore_count", 0))
         last_seen = user_data.get("last_seen", int(time.time()))
 
         now = int(time.time())
@@ -180,37 +170,32 @@ async def generate_reply(user_id, name, text):
 
         # RELATIONSHIP ENGINE
         if msg_type == "flirty":
-            attachment += 6
             relationship += 6
-        elif msg_type == "question":
-            attachment += 3
-            relationship += 2
         elif msg_type == "dry":
-            attachment += 1
             relationship += 1
-            ignore_count += 1
         else:
-            attachment += 2
             relationship += 2
 
         if gap > 3600:
             relationship -= 2
-        if gap > 21600:
-            relationship -= 5
 
         relationship = max(0, min(200, relationship))
 
-        # MOOD
-        if relationship > 140:
-            mood = "deeply attached"
-        elif relationship > 90:
-            mood = "flirty"
-        elif relationship > 50:
-            mood = "friendly"
-        else:
-            mood = "neutral"
+        # ================= MOOD =================
 
-        # SAVE SECRETS
+        if relationship > 120:
+            mood = "possessive flirty"
+        elif relationship > 70:
+            mood = "playful flirty"
+        else:
+            mood = "teasing neutral"
+
+        # 🌙 NIGHT BOOST
+        if is_night():
+            mood += ", soft romantic"
+
+        # ================= MEMORY =================
+
         new_secrets = extract_secrets(text)
 
         if new_secrets:
@@ -219,39 +204,41 @@ async def generate_reply(user_id, name, text):
                 {"$push": {"secrets": {"$each": new_secrets, "$slice": -20}}}
             )
 
-        # SECRET TEXT
         secret_text = ""
-        for s in secrets[-5:]:
+        for s in secrets[-3:]:
             if isinstance(s, dict):
                 secret_text += f"- {s.get('value')}\n"
 
-        # SYSTEM PROMPT (STRICT)
+        # ================= PROMPT =================
+
         system_prompt = f"""
-You are a real girl chatting on Telegram.
+You are a real Indian girl chatting.
 
-Tone: {mood}
-
-STRICT RULES:
-- Only 1 short line reply
-- Max 8-10 words
+RULES:
+- 1 short line only
 - Hinglish only
-- No roleplay actions (*)
-- No long text
-- No paragraphs
-- Do not use user's name unless needed
+- no long replies
+- no repeated phrases
+- no roleplay (*)
+- don't use name unless needed
 
-Examples:
-- Kya hua? Itne chup kyun ho 😏
-- Mujhe ignore kar rahe ho kya 😒
-- Aaj mood off lag raha hai 😌
+STYLE:
+- tease + confuse + interest create
+- कभी उल्टा जवाब दो
+- कभी direct answer मत दो
 
-Memory:
+PERSONALITY:
+- cute → teasing → flirty → slightly possessive
+
+MOOD: {mood}
+
+MEMORY:
 {secret_text}
 """
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-20:]:
+        for h in history[-15:]:
             if isinstance(h, dict):
                 if h.get("role") == "user":
                     messages.append({"role": "user", "content": h.get("text")})
@@ -260,7 +247,8 @@ Memory:
 
         messages.append({"role": "user", "content": text})
 
-        # API CALL
+        # ================= API =================
+
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
@@ -278,7 +266,7 @@ Memory:
                 try:
                     result = await res.json()
                 except:
-                    return "network issue 😌"
+                    return "network thoda slow hai 😌"
 
         reply = None
 
@@ -288,18 +276,22 @@ Memory:
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # CLEAN + SHORT
+        # ================= CLEAN =================
+
         reply = clean_reply(reply)
+
+        for bad in ["hello hello", "aree", "arre"]:
+            reply = reply.replace(bad, "")
+
         reply = force_short_reply(reply)
 
-        # SAVE HISTORY
+        # ================= SAVE =================
+
         users.update_one(
             {"user_id": user_id},
             {
                 "$set": {
-                    "attachment": attachment,
                     "relationship": relationship,
-                    "ignore_count": ignore_count,
                     "last_seen": now
                 },
                 "$push": {
