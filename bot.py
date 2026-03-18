@@ -2,13 +2,14 @@ import os
 import logging
 import random
 import asyncio
-from telegram import Update
+from telegram import Update, ChatMemberUpdated
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     ContextTypes,
     filters,
+    ChatMemberHandler,
 )
 
 from database import (
@@ -16,8 +17,8 @@ from database import (
     get_top_users,
     get_inactive_users,
     users,
-    save_group,     # 🔥 NEW (DB)
-    get_groups      # 🔥 NEW (DB)
+    save_group,
+    get_groups
 )
 from ai import generate_reply, generate_tag_message
 
@@ -36,6 +37,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
+
+
+# ================= AUTO GROUP DETECT =================
+
+async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result: ChatMemberUpdated = update.my_chat_member
+
+    if result.new_chat_member.status in ["member", "administrator"]:
+        chat_id = result.chat.id
+        save_group(chat_id)
+
+        try:
+            await context.bot.send_message(
+                chat_id,
+                "hii… main Deepsikha hu 😏 ab thoda interesting hoga yaha"
+            )
+        except:
+            pass
+
+
+# ================= WELCOME SYSTEM =================
+
+async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.new_chat_members:
+        return
+
+    for member in update.message.new_chat_members:
+        name = member.first_name
+
+        await asyncio.sleep(random.randint(1, 3))  # ⏳ delay
+
+        msg = random.choice([
+            f"{name}… late aaye ho 😏",
+            f"welcome {name}… dekhte hai kitne interesting ho",
+            f"{name} aa gaye… ab group thoda better hoga shayad",
+            f"{name}… silent rehna better hai 😌",
+        ])
+
+        await update.message.reply_text(msg)
 
 
 # ================= TAG ALL =================
@@ -96,7 +136,7 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ================= BROADCAST (FIXED 🔥) =================
+# ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
@@ -109,7 +149,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent = 0
 
-    # 🔥 GROUPS FROM DATABASE (FIXED)
     for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, msg)
@@ -117,7 +156,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # 🔥 USERS
     for u in users.find():
         try:
             await context.bot.send_message(u["user_id"], msg)
@@ -145,17 +183,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.message.chat_id
 
-    # 🔥 SAVE GROUP IN DATABASE (PERMANENT FIX)
+    # SAVE GROUP
     if chat_type in ["group", "supergroup"]:
         save_group(chat_id)
 
-    # SAVE MEMBERS (RAM)
-    members = context.application.bot_data.setdefault("members", [])
-    if not any(u["id"] == user.id for u in members):
-        members.append({"id": user.id, "name": name})
-
     # SAVE USER
     update_user(user.id, name)
+
+    # ================= JEALOUSY =================
+
+    if chat_type in ["group", "supergroup"]:
+        if "deepsikha" not in text_lower and not is_reply:
+            if random.randint(1, 100) <= 12:
+                msg = random.choice([
+                    "hmm… mujhe ignore karke dusro se baat 😒",
+                    "acha… ab main boring lag rahi hu?",
+                    "mere bina bhi kaafi baate ho rahi hai 😏",
+                    "thoda mujhe bhi yaad kar liya karo",
+                ])
+                return await update.message.reply_text(msg)
 
     # ================= QUICK RESPONSES =================
 
@@ -169,54 +215,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "AAKASH mera creator hai… kaafi special hai wo 😏"
         )
 
-    # ================= SMART TRIGGER =================
+    # ================= TRIGGER =================
 
-    triggered = False
-
-    if chat_type == "private":
-        triggered = True
-    elif f"@{bot_username}" in text_lower:
-        triggered = True
-    elif is_reply and is_reply.from_user and is_reply.from_user.id == context.bot.id:
-        triggered = True
-    elif "@admin" in text_lower:
-        triggered = True
-    elif "deepsikha" in text_lower:   # 🔥 FULL WAKE (ANYWHERE)
-        triggered = True
+    triggered = (
+        chat_type == "private"
+        or f"@{bot_username}" in text_lower
+        or (is_reply and is_reply.from_user and is_reply.from_user.id == context.bot.id)
+        or "deepsikha" in text_lower
+    )
 
     if not triggered:
         return
 
-    # ================= AI RESPONSE =================
+    # ================= AI =================
 
     try:
         reply = await generate_reply(user.id, name, text)
-    except Exception as e:
-        print("Reply Error:", e)
+    except:
         return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
 
-    # ================= HUMAN DELAY =================
+    # ================= DELAY =================
 
-    try:
-        if len(text.split()) <= 2:
-            delay = random.randint(2, 5)
-        elif any(x in text_lower for x in ["love", "miss", "jaan"]):
-            delay = random.randint(1, 3)
-        else:
-            delay = random.randint(2, 6)
+    delay = random.randint(2, 6)
 
-        # typing effect
-        for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-            await asyncio.sleep(1)
+    for _ in range(max(1, delay // 2)):
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        await asyncio.sleep(1)
 
-        await asyncio.sleep(delay / 2)
+    await asyncio.sleep(delay / 2)
 
-    except:
-        pass
-
-    # ================= SEND =================
     await update.message.reply_text(reply)
+
+    # ================= RANDOM REACTION =================
+
+    if random.randint(1, 100) <= 8:
+        await asyncio.sleep(random.randint(5, 15))
+
+        msgs = [
+            "sab itne chup kyun hai aaj",
+            "koi interesting banda hai yaha?",
+            "mujhe ignore kar rahe ho kya 😒",
+            "itna dead group kyun hai",
+        ]
+
+        await context.bot.send_message(chat_id, random.choice(msgs))
 
 
 # ================= AUTO MESSAGE =================
@@ -227,11 +269,9 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
         "koi baat karega ya sab busy hai",
         "itna silent group… interesting nahi hai",
         "kisi ko meri yaad bhi aati hai",
-        "kabhi kabhi effort dono side se hota hai",
-        "main bore ho rahi hu honestly",
     ]
 
-    for chat_id in get_groups():   # 🔥 DB GROUPS
+    for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, random.choice(msgs))
         except:
@@ -241,9 +281,6 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
 # ================= MAIN =================
 
 def main():
-    if not TOKEN:
-        raise ValueError("BOT_TOKEN missing")
-
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -254,9 +291,11 @@ def main():
     app.add_handler(CommandHandler("revive", revive))
     app.add_handler(CommandHandler("broadcast", broadcast))
 
+    app.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 🔥 AUTO MESSAGE LOOP
     app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
