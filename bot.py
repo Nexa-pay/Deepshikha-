@@ -1,6 +1,7 @@
 import os
 import logging
 import random
+import asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -173,7 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         triggered = True
     elif "@admin" in text_lower:
         triggered = True
-    elif "deepsikha" in text_lower:   # ✅ FULL WAKE (NO RETURN)
+    elif "deepsikha" in text_lower:
         triggered = True
 
     if not triggered:
@@ -183,7 +184,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply = await generate_reply(user.id, name, text)
 
-    # ✅ NO NAME PREFIX (FIXED)
+    # ================= HUMAN DELAY =================
+
+    if len(text.split()) <= 2:
+        delay = random.randint(2, 5)   # dry → slow
+    elif "love" in text_lower or "miss" in text_lower:
+        delay = random.randint(1, 3)   # flirty → fast
+    else:
+        delay = random.randint(2, 6)
+
+    # typing animation
+    await context.bot.send_chat_action(
+        chat_id=update.message.chat_id,
+        action="typing"
+    )
+
+    await asyncio.sleep(delay)
+
+    # ================= SEND =================
     await update.message.reply_text(reply)
 
 
@@ -226,7 +244,6 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 🔥 Auto message every 30 min
     app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
