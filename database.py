@@ -1,6 +1,7 @@
 import os
 import time
 from pymongo import MongoClient
+from pymongo.errors import ServerSelectionTimeoutError
 
 # ================= CONNECTION =================
 
@@ -9,19 +10,29 @@ MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("❌ MONGO_URI missing")
 
-client = MongoClient(MONGO_URI)
-db = client["telegram_bot"]
+try:
+    client = MongoClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=5000,  # 🔥 fast fail
+        connectTimeoutMS=5000
+    )
 
-users = db["users"]
-groups = db["groups"]
+    db = client["telegram_bot"]
 
-# 🔥 INDEXES (FAST + SAFE)
-users.create_index("user_id", unique=True)
-users.create_index("last_active")
-users.create_index("messages")  # 🔥 leaderboard fast
-groups.create_index("chat_id", unique=True)
+    users = db["users"]
+    groups = db["groups"]
 
-print("Database connected successfully 🚀")
+    # 🔥 INDEXES (FAST + SAFE)
+    users.create_index("user_id", unique=True)
+    users.create_index("last_active")
+    users.create_index("messages")
+    groups.create_index("chat_id", unique=True)
+
+    print("Database connected successfully 🚀")
+
+except ServerSelectionTimeoutError:
+    print("❌ MongoDB connection failed")
+    raise
 
 
 # ================= UPDATE USER =================
@@ -33,7 +44,6 @@ def update_user(user_id, name):
         users.update_one(
             {"user_id": user_id},
             {
-                # 🔥 first time insert only
                 "$setOnInsert": {
                     "user_id": user_id,
                     "messages": 0,
@@ -47,7 +57,7 @@ def update_user(user_id, name):
                     "history": []
                 },
 
-                # 🔥 always update (SAFE NAME FIX)
+                # 🔥 SAFE NAME (avoid overwriting with None)
                 "$set": {
                     "name": name if name else "user",
                     "last_active": now
@@ -135,11 +145,11 @@ def get_inactive_users(hours=6):
         return []
 
 
-# ================= CLEANUP (🔥 SMART CLEAN) =================
+# ================= CLEANUP =================
 
 def clean_dead_users():
     """
-    Remove users who are useless / blocked bot
+    Remove useless / broken users
     """
     try:
         result = users.delete_many({
