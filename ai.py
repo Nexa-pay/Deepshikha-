@@ -21,6 +21,31 @@ def detect_type(text):
         return "normal"
 
 
+# ================= PERSONALITY DETECT =================
+
+def analyze_user(text):
+    text = text.lower()
+
+    personality = "normal"
+    topics = []
+
+    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
+        personality = "flirty"
+        topics.append("love")
+
+    elif any(x in text for x in ["sad", "alone", "hurt"]):
+        personality = "emotional"
+        topics.append("emotions")
+
+    elif any(x in text for x in ["money", "earn", "business"]):
+        topics.append("money")
+
+    elif len(text.split()) <= 2:
+        personality = "dry"
+
+    return personality, topics
+
+
 # ================= SAFE TIME GAP =================
 
 def get_gap(last_time):
@@ -28,7 +53,6 @@ def get_gap(last_time):
         if not last_time:
             return 0
 
-        # 🔥 fix: string → int
         if isinstance(last_time, str):
             last_time = int(last_time)
 
@@ -48,10 +72,14 @@ async def generate_reply(user_id, name, text):
         history = user_data.get("history", [])
         last_seen = user_data.get("last_seen")
 
+        personality_data = user_data.get("personality", {})
+        fav_data = user_data.get("favorites", {})
+
         now = int(time.time())
         gap = get_gap(last_seen)
 
         msg_type = detect_type(text)
+        personality, topics = analyze_user(text)
 
         # ================= ATTACHMENT =================
 
@@ -65,7 +93,7 @@ async def generate_reply(user_id, name, text):
         # ================= MOOD =================
 
         if attachment > 80:
-            mood = "emotionally attached, slightly possessive"
+            mood = "emotionally attached, slightly possessive, subtle jealousy"
         elif attachment > 40:
             mood = "soft flirty, interested"
         else:
@@ -74,17 +102,19 @@ async def generate_reply(user_id, name, text):
         # ================= COMEBACK =================
 
         if gap > 86400:
-            comeback_line = "user came after long time, react like you noticed"
+            comeback = "user came after long time, react like you noticed"
         elif gap > 21600:
-            comeback_line = "user was inactive, slight attitude"
+            comeback = "user was inactive, slight attitude"
         elif gap > 3600:
-            comeback_line = "user was away, soft tone"
+            comeback = "user was away, soft tone"
         else:
-            comeback_line = "normal flow"
+            comeback = "normal flow"
 
         # ================= MEMORY =================
 
         memory_context = "\n".join(history[-5:])
+        user_type = personality_data.get("type", "normal")
+        fav_topics = ", ".join(fav_data.get("topics", []))
 
         # ================= PROMPT =================
 
@@ -103,12 +133,21 @@ PERSONALITY:
 - seductive only if user initiates
 - {mood}
 
+USER PROFILE:
+- Personality: {user_type}
+- Favorite topics: {fav_topics}
+
 COMEBACK:
-- {comeback_line}
+- {comeback}
+
+OBSESSION:
+- Make user feel noticed
+- Slight emotional pull
+- Do not overdo
 
 BEHAVIOR:
 - Flirty → flirty
-- Question → clear answer
+- Question → correct answer
 - Dry → short reply
 - Normal → natural
 
@@ -140,17 +179,14 @@ Message: {text}
             "max_tokens": 80
         }
 
-        # ================= API CALL SAFE =================
-
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
                 result = await res.json()
 
-        # 🔥 safe response
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            return "hmm… samajh nahi aaya"
+            return "samajh nahi aaya… phir bolo"
 
         reply = reply.strip()
 
@@ -161,12 +197,16 @@ Message: {text}
             {
                 "$set": {
                     "attachment": attachment,
-                    "last_seen": now
+                    "last_seen": now,
+                    "personality.type": personality
+                },
+                "$addToSet": {
+                    "favorites.topics": {"$each": topics}
                 },
                 "$push": {
                     "history": {
                         "$each": [text],
-                        "$slice": -10  # 🔥 limit history
+                        "$slice": -10
                     }
                 }
             },
@@ -177,7 +217,7 @@ Message: {text}
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "phir se bolo… clear nahi hua"
+        return "clear nahi hua… phir bolo"
 
 
 # ================= TAGALL =================
