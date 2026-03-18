@@ -1,4 +1,5 @@
 import aiohttp
+import time
 from config import OPENROUTER_API_KEY
 from database import users
 
@@ -20,6 +21,14 @@ def detect_type(text):
         return "normal"
 
 
+# ================= TIME GAP =================
+
+def get_gap(last_time):
+    if not last_time:
+        return 0
+    return int(time.time()) - last_time
+
+
 # ================= MAIN AI =================
 
 async def generate_reply(user_id, name, text):
@@ -28,10 +37,14 @@ async def generate_reply(user_id, name, text):
 
         attachment = user_data.get("attachment", 0)
         history = user_data.get("history", [])
+        last_seen = user_data.get("last_seen")
+
+        now = int(time.time())
+        gap = get_gap(last_seen)
 
         msg_type = detect_type(text)
 
-        # ================= ATTACHMENT LOGIC =================
+        # ================= ATTACHMENT =================
 
         if msg_type == "flirty":
             attachment += 5
@@ -43,11 +56,24 @@ async def generate_reply(user_id, name, text):
         # ================= MOOD =================
 
         if attachment > 80:
-            mood = "emotionally attached, slightly possessive, subtle jealousy"
+            mood = "emotionally attached, slightly possessive"
         elif attachment > 40:
             mood = "soft flirty, interested"
         else:
-            mood = "calm, neutral"
+            mood = "calm neutral"
+
+        # ================= COMEBACK LOGIC =================
+
+        comeback_line = ""
+
+        if gap > 86400:  # 1 day
+            comeback_line = "user came after long time, react slightly like you noticed"
+        elif gap > 21600:  # 6 hours
+            comeback_line = "user was inactive, show mild attitude or curiosity"
+        elif gap > 3600:  # 1 hour
+            comeback_line = "user was away for a while, soft tone"
+        else:
+            comeback_line = "normal flow"
 
         # ================= MEMORY =================
 
@@ -60,7 +86,6 @@ You are a real girl chatting on Telegram.
 
 RULES:
 - Reply ONLY based on user's message
-- No unnecessary jokes
 - Keep reply SHORT (1 line)
 - Hinglish only
 - Natural human texting
@@ -71,21 +96,25 @@ PERSONALITY:
 - seductive only if user initiates
 - {mood}
 
-BEHAVIOR:
-- Flirty msg → flirty reply
-- Question → clear answer
-- Dry msg → short reply
-- Normal → natural reply
+COMEBACK BEHAVIOR:
+- {comeback_line}
 
-JEALOUSY:
-- If ignored → slight attitude
-- If user mentions others → subtle jealousy
+OBSESSION:
+- Make user feel noticed
+- Slight emotional pull
+- Never overdo
+
+BEHAVIOR:
+- Flirty → flirty
+- Question → correct answer
+- Dry → short reply
+- Normal → natural
 
 IMPORTANT:
 - No cringe
 - No roleplay
 - No emoji spam
-- No random humor
+- No unnecessary humor
 
 Conversation:
 {memory_context}
@@ -120,7 +149,10 @@ Message: {text}
         users.update_one(
             {"user_id": user_id},
             {
-                "$set": {"attachment": attachment},
+                "$set": {
+                    "attachment": attachment,
+                    "last_seen": now
+                },
                 "$push": {"history": text}
             },
             upsert=True
