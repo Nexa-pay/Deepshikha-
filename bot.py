@@ -19,6 +19,20 @@ from database import users, tokens
 from ai import generate_reply, detect_emotion, generate_tag_message
 
 
+# ---------------- GROUP AUTO SAVE ----------------
+
+async def save_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+
+    if chat.type in ["group", "supergroup"]:
+        if "groups" not in context.bot_data:
+            context.bot_data["groups"] = set()
+
+        context.bot_data["groups"].add(chat.id)
+
+        print("Saved group:", chat.id)
+
+
 # ---------------- GENDER ----------------
 
 def detect_gender(name):
@@ -120,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎟 Redeem Token", callback_data="redeem")],
         [InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
         [InlineKeyboardButton("👥 Tag All", callback_data="tagall")],
-        [InlineKeyboardButton("💰 Buy Premium", callback_data="premium")]
+        [InlineKeyboardButton("💰 Premium", callback_data="premium")]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -203,29 +217,32 @@ async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_send(context, update.effective_chat.id, msg)
 
 
-# ---------------- AUTO MESSAGE ----------------
+# ---------------- AUTO MESSAGE (MULTI GROUP) ----------------
 
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     while True:
-        users_list = list(users.find().limit(5))
+        groups = context.bot_data.get("groups", set())
 
-        for user in users_list:
-            try:
-                uid = user["user_id"]
-                name = user.get("name", "User")
+        for group_id in groups:
+            users_list = list(users.find().limit(5))
 
-                msg = await generate_tag_message(name)
+            for user in users_list:
+                try:
+                    uid = user["user_id"]
+                    name = user.get("name", "User")
 
-                text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
+                    msg = await generate_tag_message(name)
 
-                await context.bot.send_message(
-                    chat_id=context.bot_data["group_id"],
-                    text=text,
-                    parse_mode="HTML"
-                )
+                    text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
 
-            except Exception as e:
-                print("AUTO ERROR:", e)
+                    await context.bot.send_message(
+                        chat_id=group_id,
+                        text=text,
+                        parse_mode="HTML"
+                    )
+
+                except Exception as e:
+                    print("AUTO ERROR:", e)
 
         await asyncio.sleep(7200)
 
@@ -289,10 +306,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # 🔥 PUT YOUR GROUP ID HERE
-    app.bot_data["group_id"] = -100XXXXXXXXXX
-
     # handlers
+    app.add_handler(MessageHandler(filters.ALL, save_group), group=0)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tagall", tagall))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
