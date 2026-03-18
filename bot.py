@@ -41,7 +41,8 @@ async def safe_send(context, chat_id, text):
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=text,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
             return
         except TimedOut:
@@ -81,20 +82,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("USER:", user_id)
     print("TEXT:", text)
 
-    # ---------------- GROUP LOGIC ----------------
+    # ---------------- DETECT REPLY TO BOT ----------------
 
     is_reply_to_bot = False
-
     if update.message.reply_to_message:
         replied_user = update.message.reply_to_message.from_user
         if replied_user and replied_user.id == bot_id:
             is_reply_to_bot = True
 
+    # ---------------- GROUP LOGIC ----------------
+
     if chat_type in ["group", "supergroup"]:
         is_mention = f"@{bot_username}" in text
         is_admin_call = "@admin" in text
 
-        # ❌ Ignore if none triggered
+        # Only respond if one of conditions met
         if not (is_mention or is_admin_call or is_reply_to_bot):
             return
 
@@ -119,17 +121,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply:
             reply = "Say that again 😏"
 
-        # ---------------- SMART REPLY STYLE ----------------
+        # 🔥 ALWAYS MENTION USER (CLICKABLE)
+        final_reply = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
 
-        if is_reply_to_bot:
-            # natural reply (no name)
-            final_reply = reply
-        else:
-            # mention user
-            final_reply = f"<b>{name}</b>, {reply}"
-
-        # ---------------- SEND ----------------
-
+        # Send message
         await safe_send(context, update.effective_chat.id, final_reply)
 
     except Exception as e:
