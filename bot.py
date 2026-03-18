@@ -33,7 +33,7 @@ def save_user(update):
     )
 
 
-# ---------------- SAFE SEND (FIX TIMEOUT) ----------------
+# ---------------- SAFE SEND ----------------
 
 async def safe_send(context, chat_id, text):
     for i in range(3):
@@ -75,6 +75,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.effective_chat.type
 
     bot_username = context.bot.username.lower()
+    bot_id = context.bot.id
 
     print("CHAT:", chat_type)
     print("USER:", user_id)
@@ -82,8 +83,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---------------- GROUP LOGIC ----------------
 
+    is_reply_to_bot = False
+
+    if update.message.reply_to_message:
+        replied_user = update.message.reply_to_message.from_user
+        if replied_user and replied_user.id == bot_id:
+            is_reply_to_bot = True
+
     if chat_type in ["group", "supergroup"]:
-        if f"@{bot_username}" not in text and "@admin" not in text:
+        is_mention = f"@{bot_username}" in text
+        is_admin_call = "@admin" in text
+
+        # ❌ Ignore if none triggered
+        if not (is_mention or is_admin_call or is_reply_to_bot):
             return
 
     # ---------------- SAVE USER ----------------
@@ -91,7 +103,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_user(update)
 
     try:
-        # Emotion tracking
+        # Emotion detection
         emotion = await detect_emotion(text)
 
         users.update_one(
@@ -107,10 +119,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply:
             reply = "Say that again 😏"
 
-        # ✅ Mention user (HTML bold)
-        final_reply = f"<b>{name}</b>, {reply}"
+        # ---------------- SMART REPLY STYLE ----------------
 
-        # Send safely
+        if is_reply_to_bot:
+            # natural reply (no name)
+            final_reply = reply
+        else:
+            # mention user
+            final_reply = f"<b>{name}</b>, {reply}"
+
+        # ---------------- SEND ----------------
+
         await safe_send(context, update.effective_chat.id, final_reply)
 
     except Exception as e:
