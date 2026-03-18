@@ -1,10 +1,24 @@
 from pymongo import MongoClient
-from config import MONGO_URI
+import os
+
+# ---------------- MONGODB CONNECTION ----------------
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
 client = MongoClient(MONGO_URI)
+
 db = client["telegram_bot"]
 
-users = db["users"]
-tokens = db["tokens"]
-admins = db["admins"]
-chats = db["chats"]
+# ---------------- COLLECTIONS ----------------
+
+users = db["users"]        # store users
+groups = db["groups"]      # store group chats
+tokens = db["tokens"]      # for paid system (future ready)
+
+# ---------------- INDEXES (PERFORMANCE BOOST) ----------------
+
+users.create_index("user_id", unique=True)
+groups.create_index("chat_id", unique=True)
+tokens.create_index("user_id")
+
+print("Database connected successfully 🚀")
