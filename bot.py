@@ -11,6 +11,7 @@ from telegram.ext import (
 )
 
 from database import update_user, get_top_users, get_inactive_users
+from ai import generate_reply, generate_tag_message
 
 # ================= CONFIG =================
 logging.basicConfig(level=logging.INFO)
@@ -18,25 +19,38 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = 123456789  # ⚠️ replace with your Telegram ID
 
-# ================= COMMANDS =================
+
+# ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hello!\n\nI'm your AI girl bot 💅\n\nUse me wisely 😏"
+        "hii 😚 main aa gayi… miss kiya kya? 😏"
     )
 
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot working perfectly!")
+    await update.message.reply_text("bot active hai baby 😌")
 
 
 # ================= TAG ALL =================
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type not in ["group", "supergroup"]:
-        return await update.message.reply_text("❌ Group only")
+        return await update.message.reply_text("❌ group me use karo")
 
-    await update.message.reply_text("📢 sab aa jao… drama start ho raha hai 😏🔥")
+    members = context.application.bot_data.get("members", [])
+
+    if not members:
+        return await update.message.reply_text("koi active hi nahi hai 😴")
+
+    msg = "📢 suno sab:\n\n"
+
+    for user in members[:10]:  # limit 10 users
+        name = user["name"]
+        ai_msg = await generate_tag_message(name)
+        msg += f"{name} — {ai_msg}\n"
+
+    await update.message.reply_text(msg)
 
 
 # ================= LEADERBOARD =================
@@ -45,12 +59,12 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = get_top_users()
 
     if not top_users:
-        return await update.message.reply_text("No data yet 😴")
+        return await update.message.reply_text("abhi koi active nahi hai 😴")
 
-    text = "🏆 Top Active Users:\n\n"
+    text = "🏆 top active log:\n\n"
 
     for i, user in enumerate(top_users, start=1):
-        text += f"{i}. {user['name']} — {user.get('messages', 0)} msgs\n"
+        text += f"{i}. {user['name']} — {user.get('messages', 0)} 🔥\n"
 
     await update.message.reply_text(text)
 
@@ -59,7 +73,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def database(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = len(get_top_users(1000))
-    await update.message.reply_text(f"📊 Total users: {total}")
+    await update.message.reply_text(f"📊 total users: {total}")
 
 
 # ================= REVIVE =================
@@ -70,9 +84,9 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not inactive:
         return
 
-    names = [u["name"] for u in inactive]
+    names = [u["name"] for u in inactive[:5]]
 
-    msg = f"{', '.join(names)} kya hua? ghost ban gaye kya 👻😏"
+    msg = f"{', '.join(names)} kaha gayab ho gaye sab 😏"
 
     await update.message.reply_text(msg)
 
@@ -93,7 +107,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("Broadcast sent ✅")
+    await update.message.reply_text("broadcast done 😌")
 
 
 # ================= AI MESSAGE =================
@@ -104,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.message.from_user
     name = user.first_name
-    text = update.message.text.lower()
+    text = update.message.text
     chat_type = update.message.chat.type
 
     bot_username = context.bot.username.lower()
@@ -116,36 +130,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in groups:
         groups.append(chat_id)
 
+    # ✅ Save members for tagall
+    members = context.application.bot_data.setdefault("members", [])
+    if not any(u["id"] == user.id for u in members):
+        members.append({"id": user.id, "name": name})
+
     # ✅ Save user to DB
     update_user(user.id, name)
 
-    # ✅ Smart trigger
+    # ✅ Smart trigger (ANTI-SPAM)
     if chat_type in ["group", "supergroup"]:
         if (
-            f"@{bot_username}" not in text
-            and "@admin" not in text
+            f"@{bot_username}" not in text.lower()
+            and "@admin" not in text.lower()
             and not is_reply
         ):
             return
 
-    # 💅 AI personality
-    replies = [
-        f"{name} tum phir aa gaye 😏",
-        f"{name} itna yaad karte ho mujhe? 😌",
-        f"{name} control karo yaar 🔥",
-        f"{name} tum dangerous ho 😳",
-        f"{name} mujhe impress kar rahe ho kya 😏",
-        f"{name} tumse baat karna risky hai 😂",
-    ]
-
-    if "hi" in text:
-        reply = f"hii {name} 😚 finally yaad aayi meri?"
-    elif "love" in text:
-        reply = f"easy {name}… itni jaldi nahi 😳💖"
-    elif "miss" in text:
-        reply = f"sach me miss kiya ya bas bol rahe ho? 😏"
-    else:
-        reply = random.choice(replies)
+    # 💅 REAL AI RESPONSE (DeepSeek)
+    reply = await generate_reply(user.id, name, text)
 
     await update.message.reply_text(reply)
 
@@ -158,7 +161,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     msgs = [
         "group itna silent kyu hai 😴",
         "koi baat karega ya main hi start karu? 😏",
-        "boring ho rahe ho sab 😂",
+        "ignore kar rahe ho ya busy ho sab 😌",
     ]
 
     for chat_id in groups:
@@ -189,7 +192,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Auto message every 2 hours
-    app.job_queue.run_repeating(auto_message, interval=7200, first=30)
+    app.job_queue.run_repeating(auto_message, interval=7200, first=60)
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
