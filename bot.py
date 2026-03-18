@@ -182,24 +182,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ================= AI RESPONSE =================
 
-    reply = await generate_reply(user.id, name, text)
+    try:
+        reply = await generate_reply(user.id, name, text)
+    except Exception as e:
+        print("Reply Error:", e)
+        return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
 
     # ================= HUMAN DELAY =================
 
-    if len(text.split()) <= 2:
-        delay = random.randint(2, 5)   # dry → slow
-    elif "love" in text_lower or "miss" in text_lower:
-        delay = random.randint(1, 3)   # flirty → fast
-    else:
-        delay = random.randint(2, 6)
+    try:
+        if len(text.split()) <= 2:
+            delay = random.randint(2, 5)
+        elif any(x in text_lower for x in ["love", "miss", "jaan"]):
+            delay = random.randint(1, 3)
+        else:
+            delay = random.randint(2, 6)
 
-    # typing animation
-    await context.bot.send_chat_action(
-        chat_id=update.message.chat_id,
-        action="typing"
-    )
+        # typing animation loop (more realistic)
+        for _ in range(max(1, delay // 2)):
+            await context.bot.send_chat_action(
+                chat_id=chat_id,
+                action="typing"
+            )
+            await asyncio.sleep(1)
 
-    await asyncio.sleep(delay)
+        await asyncio.sleep(delay / 2)
+
+    except:
+        pass
 
     # ================= SEND =================
     await update.message.reply_text(reply)
@@ -244,6 +254,7 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # 🔥 Auto message every 30 min
     app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
