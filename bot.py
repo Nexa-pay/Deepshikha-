@@ -28,17 +28,17 @@ from database import (
     update_user,
     users,
     save_group,
-    get_groups
+    get_groups,
+    get_top_users
 )
 
-from ai import generate_reply, generate_tag_message, get_random_image, should_send_image
+from ai import generate_reply, get_random_image, should_send_image
 from voice import text_to_voice, delete_voice
 
 logging.basicConfig(level=logging.INFO)
 
 
 # ================= STICKERS =================
-
 STICKERS = {
     "cute": [],
     "love": [],
@@ -48,7 +48,6 @@ STICKERS = {
 
 
 # ================= START =================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("hii… main Deepsikha hu 😏")
 
@@ -57,8 +56,27 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
 
 
-# ================= BOT ADDED =================
+# ================= DATABASE =================
+async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    count = users.count_documents({})
+    await update.message.reply_text(f"total users: {count}")
 
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    top = get_top_users()
+
+    if not top:
+        return await update.message.reply_text("abhi koi active user nahi hai 😌")
+
+    text = "🏆 Top users:\n\n"
+
+    for i, u in enumerate(top, 1):
+        text += f"{i}. {u.get('name','user')} — {u.get('messages',0)} msgs\n"
+
+    await update.message.reply_text(text)
+
+
+# ================= BOT ADDED =================
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result: ChatMemberUpdated = update.my_chat_member
 
@@ -76,7 +94,6 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= WELCOME =================
-
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.new_chat_members:
         return
@@ -92,7 +109,6 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= BROADCAST =================
-
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
@@ -111,18 +127,19 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             failed += 1
 
-    for u in users.find():
+    # ✅ only active users
+    for u in users.find({"messages": {"$gt": 0}}):
         try:
             await context.bot.send_message(u["user_id"], msg)
             sent += 1
         except:
             failed += 1
+            users.delete_one({"user_id": u["user_id"]})  # 🔥 cleanup
 
     await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
 
 
 # ================= MAIN =================
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -151,8 +168,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # SAVE USER
     update_user(user.id, user.first_name)
 
-    # ================= IMAGE =================
+    # ================= MEMBER TRACK =================
+    members = context.application.bot_data.setdefault("members", [])
+    if not any(u["id"] == user.id for u in members):
+        members.append({"id": user.id, "name": user.first_name})
 
+    # ================= IMAGE =================
     if should_send_image(text):
         if random.randint(1, 100) <= PHOTO_CHANCE:
             await context.bot.send_photo(chat_id, get_random_image())
@@ -161,14 +182,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ================= STICKERS =================
-
     if random.randint(1, 100) <= STICKER_CHANCE:
         mood = random.choice(list(STICKERS.keys()))
         if STICKERS[mood]:
             await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
 
     # ================= JEALOUSY =================
-
     if chat_type in ["group", "supergroup"]:
         if "deepsikha" not in text_lower and not is_reply:
             if random.randint(1, 100) <= JEALOUSY_CHANCE:
@@ -179,7 +198,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]))
 
     # ================= TRIGGER =================
-
     triggered = (
         chat_type == "private"
         or f"@{bot_username}" in text_lower
@@ -191,14 +209,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ================= AI =================
-
     try:
         reply = await generate_reply(user.id, user.first_name, text)
     except:
         return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
 
     # ================= DELAY =================
-
     delay = random.randint(MIN_DELAY, MAX_DELAY)
 
     for _ in range(max(1, delay // 2)):
@@ -210,7 +226,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
     # ================= VOICE =================
-
     if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
         voice_file = text_to_voice(reply, user.id)
 
@@ -221,18 +236,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             delete_voice(voice_file)
 
     # ================= RANDOM MESSAGE =================
-
     if random.randint(1, 100) <= RANDOM_MESSAGE_CHANCE:
         await asyncio.sleep(random.randint(5, 15))
-        await context.bot.send_message(chat_id, random.choice([
+
+        msgs = [
             "sab itne chup kyun hai",
             "koi interesting banda hai yaha?",
             "mujhe ignore kar rahe ho kya 😒",
-        ]))
+        ]
+
+        await context.bot.send_message(chat_id, random.choice(msgs))
+
+    # ================= USER CALLOUT (🔥 GROWTH) =================
+    if random.randint(1, 100) <= 10 and members:
+        u = random.choice(members)
+        await context.bot.send_message(chat_id, f"{u['name']}… tum chup kyu ho 😏")
 
 
 # ================= AUTO =================
-
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in get_groups():
         try:
@@ -246,13 +267,14 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= MAIN =================
-
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("broadcast", broadcast))
+    app.add_handler(CommandHandler("database", database_cmd))     # 🔥 FIX
+    app.add_handler(CommandHandler("leaderboard", leaderboard))   # 🔥 FIX
 
     app.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
