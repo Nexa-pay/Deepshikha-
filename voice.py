@@ -1,24 +1,46 @@
 from gtts import gTTS
 import os
-import time
 import uuid
+import re
+
+from config import VOICE_STYLE  # soft / normal
+
+
+# ================= CLEAN TEXT =================
+
+def clean_text(text):
+    # remove emojis / extra symbols
+    text = re.sub(r"[^\w\s,.?!]", "", text)
+
+    # trim long text
+    if len(text) > 200:
+        text = text[:200]
+
+    return text.strip()
+
+
+# ================= STYLE =================
+
+def apply_style(text):
+    if VOICE_STYLE == "soft":
+        # slight pause + softer tone effect
+        return text + "..."
+    return text
+
 
 # ================= TEXT → VOICE =================
 
 def text_to_voice(text, user_id):
     try:
-        # 🔥 unique filename (no overwrite)
-        unique_id = str(uuid.uuid4())[:8]
-        filename = f"voice_{user_id}_{unique_id}.mp3"
+        # unique file
+        filename = f"voice_{user_id}_{uuid.uuid4().hex[:6]}.mp3"
 
-        # 🔥 text trim (avoid long crash)
-        if len(text) > 200:
-            text = text[:200]
+        text = clean_text(text)
+        text = apply_style(text)
 
-        # 🔥 Hinglish friendly
         tts = gTTS(
             text=text,
-            lang='en',      # Hinglish best works with en
+            lang='en',   # Hinglish best
             slow=False
         )
 
@@ -35,7 +57,7 @@ def text_to_voice(text, user_id):
 
 def delete_voice(file_path):
     try:
-        if os.path.exists(file_path):
+        if file_path and os.path.exists(file_path):
             os.remove(file_path)
     except Exception as e:
         print("Delete error:", e)
