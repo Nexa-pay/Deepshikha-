@@ -1,7 +1,7 @@
-import os
 import logging
 import random
 import asyncio
+
 from telegram import Update, ChatMemberUpdated
 from telegram.ext import (
     ApplicationBuilder,
@@ -12,43 +12,50 @@ from telegram.ext import (
     ChatMemberHandler,
 )
 
+from config import (
+    BOT_TOKEN,
+    OWNER_ID,
+    MIN_DELAY,
+    MAX_DELAY,
+    PHOTO_CHANCE,
+    STICKER_CHANCE,
+    JEALOUSY_CHANCE,
+    RANDOM_MESSAGE_CHANCE,
+    ENABLE_VOICE
+)
+
 from database import (
     update_user,
-    get_top_users,
-    get_inactive_users,
     users,
     save_group,
     get_groups
 )
-from ai import generate_reply, generate_tag_message
 
-# ================= CONFIG =================
+from ai import generate_reply, generate_tag_message, get_random_image, should_send_image
+from voice import text_to_voice, delete_voice
+
 logging.basicConfig(level=logging.INFO)
 
-TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 
-# ================= MEDIA =================
-
-GITHUB_IMAGES = [
-    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4818.jpg",
-    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
-]
+# ================= STICKERS =================
 
 STICKERS = {
-    "tease": [],
     "cute": [],
+    "love": [],
     "attitude": [],
-    "love": []
+    "tease": []
 }
+
 
 # ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("hii… main Deepsikha hu 😏")
 
+
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
+
 
 # ================= BOT ADDED =================
 
@@ -67,6 +74,7 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+
 # ================= WELCOME =================
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,24 +82,20 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     for member in update.message.new_chat_members:
-        name = member.first_name
-
         await asyncio.sleep(random.randint(1, 3))
 
-        msg = random.choice([
-            f"{name}… late aaye ho 😏",
-            f"welcome {name}… dekhte hai kitne interesting ho",
-            f"{name} aa gaye… ab group thoda better hoga shayad",
-            f"{name}… silent rehna better hai 😌",
-        ])
+        await update.message.reply_text(random.choice([
+            f"{member.first_name}… late aaye ho 😏",
+            f"welcome {member.first_name}… dekhte hai kitne interesting ho",
+            f"{member.first_name} aa gaye… ab group better hoga shayad",
+        ]))
 
-        await update.message.reply_text(msg)
 
 # ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
-        return await update.message.reply_text("not allowed")
+        return
 
     msg = " ".join(context.args)
 
@@ -116,13 +120,14 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
 
+
 # ================= MAIN =================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    # 🔥 STICKER ID GETTER
+    # 🔥 sticker id getter
     if update.message.sticker:
         await update.message.reply_text(update.message.sticker.file_id)
         return
@@ -131,7 +136,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.message.from_user
-    name = user.first_name
     text = update.message.text.strip()
     text_lower = text.lower()
     chat_type = update.message.chat.type
@@ -145,47 +149,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_group(chat_id)
 
     # SAVE USER
-    update_user(user.id, name)
+    update_user(user.id, user.first_name)
 
     # ================= IMAGE =================
 
-    if any(x in text_lower for x in ["photo", "pic", "selfie"]):
-        if random.randint(1, 100) <= 50:
-            return await update.message.reply_text("itni jaldi photo? 😏")
-
-        await context.bot.send_photo(
-            chat_id=chat_id,
-            photo=random.choice(GITHUB_IMAGES)
-        )
+    if should_send_image(text):
+        if random.randint(1, 100) <= PHOTO_CHANCE:
+            await context.bot.send_photo(chat_id, get_random_image())
+        else:
+            await update.message.reply_text("itni jaldi photo? 😏")
         return
 
     # ================= STICKERS =================
 
-    if any(x in text_lower for x in ["lol", "haha"]):
-        if STICKERS["cute"]:
-            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["cute"]))
-        return
-
-    if any(x in text_lower for x in ["miss", "love"]):
-        if STICKERS["love"]:
-            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["love"]))
-        return
-
-    if any(x in text_lower for x in ["ignore", "huh"]):
-        if STICKERS["attitude"]:
-            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["attitude"]))
-        return
+    if random.randint(1, 100) <= STICKER_CHANCE:
+        mood = random.choice(list(STICKERS.keys()))
+        if STICKERS[mood]:
+            await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
 
     # ================= JEALOUSY =================
 
     if chat_type in ["group", "supergroup"]:
         if "deepsikha" not in text_lower and not is_reply:
-            if random.randint(1, 100) <= 12:
+            if random.randint(1, 100) <= JEALOUSY_CHANCE:
                 return await update.message.reply_text(random.choice([
                     "hmm… mujhe ignore karke dusro se baat 😒",
                     "acha… ab main boring lag rahi hu?",
                     "mere bina bhi kaafi baate ho rahi hai 😏",
-                    "thoda mujhe bhi yaad kar liya karo",
                 ]))
 
     # ================= TRIGGER =================
@@ -203,13 +193,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= AI =================
 
     try:
-        reply = await generate_reply(user.id, name, text)
+        reply = await generate_reply(user.id, user.first_name, text)
     except:
         return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
 
     # ================= DELAY =================
 
-    delay = random.randint(2, 6)
+    delay = random.randint(MIN_DELAY, MAX_DELAY)
 
     for _ in range(max(1, delay // 2)):
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -219,22 +209,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-    # ================= RANDOM REACTION =================
+    # ================= VOICE =================
 
-    if random.randint(1, 100) <= 8:
+    if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
+        voice_file = text_to_voice(reply, user.id)
+
+        if voice_file:
+            with open(voice_file, "rb") as v:
+                await update.message.reply_voice(v)
+
+            delete_voice(voice_file)
+
+    # ================= RANDOM MESSAGE =================
+
+    if random.randint(1, 100) <= RANDOM_MESSAGE_CHANCE:
         await asyncio.sleep(random.randint(5, 15))
         await context.bot.send_message(chat_id, random.choice([
-            "sab itne chup kyun hai aaj",
+            "sab itne chup kyun hai",
             "koi interesting banda hai yaha?",
             "mujhe ignore kar rahe ho kya 😒",
-            "itna dead group kyun hai",
         ]))
 
-    # 🎭 RANDOM STICKER
-    if random.randint(1, 100) <= 6:
-        mood = random.choice(list(STICKERS.keys()))
-        if STICKERS[mood]:
-            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS[mood]))
 
 # ================= AUTO =================
 
@@ -245,15 +240,15 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
                 "aaj sab itne chup kyu hai",
                 "koi baat karega ya sab busy hai",
                 "itna silent group… interesting nahi hai",
-                "kisi ko meri yaad bhi aati hai",
             ]))
         except:
             pass
 
+
 # ================= MAIN =================
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
@@ -268,6 +263,7 @@ def main():
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
