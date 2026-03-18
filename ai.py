@@ -6,8 +6,7 @@ from config import (
     OPENROUTER_API_KEY,
     MODEL,
     TEMPERATURE,
-    MAX_TOKENS,
-    PHOTO_CHANCE
+    MAX_TOKENS
 )
 
 from database import users
@@ -159,23 +158,21 @@ async def generate_reply(user_id, name, text):
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-CORE RULES:
-- Reply ONLY based on user's message
-- Continue conversation naturally
+RULES:
+- Reply based on user's message
 - Keep reply SHORT (1 line)
 - Hinglish only
+- Natural human tone
 
-STRICT:
-- Never rude
-- Never abusive
-- Soft, natural, slightly flirty
+PERSONALITY:
+- calm, confident
+- slightly flirty when needed
+- {mood}
 
-CONFUSION:
-- unclear → playful + flirty
+USER PROFILE:
+- {user_type}
+- {fav_topics}
 
-MOOD: {mood}
-USER TYPE: {user_type}
-FAV TOPICS: {fav_topics}
 COMEBACK: {comeback}
 POSSESSIVE: {possessive_hint}
 """
@@ -195,7 +192,7 @@ POSSESSIVE: {possessive_hint}
         # ================= API =================
 
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY},
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
         }
 
