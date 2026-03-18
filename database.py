@@ -15,7 +15,7 @@ db = client["telegram_bot"]
 users = db["users"]
 groups = db["groups"]
 
-# 🔥 INDEXES (IMPORTANT FOR SPEED + NO DUPLICATES)
+# 🔥 INDEXES (IMPORTANT)
 users.create_index("user_id", unique=True)
 groups.create_index("chat_id", unique=True)
 
@@ -60,20 +60,23 @@ def default_user(user_id, name):
 def update_user(user_id, name):
     now = int(time.time())
 
-    users.update_one(
-        {"user_id": user_id},
-        {
-            "$setOnInsert": default_user(user_id, name),  # 🔥 safe insert
-            "$set": {
-                "name": name,
-                "last_active": now
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {
+                "$setOnInsert": default_user(user_id, name),
+                "$set": {
+                    "name": name,
+                    "last_active": now
+                },
+                "$inc": {
+                    "messages": 1
+                }
             },
-            "$inc": {
-                "messages": 1
-            }
-        },
-        upsert=True
-    )
+            upsert=True
+        )
+    except Exception as e:
+        print("DB update error:", e)
 
 
 # ================= GROUP SYSTEM =================
@@ -85,23 +88,28 @@ def save_group(chat_id):
             {"$set": {"chat_id": chat_id}},
             upsert=True
         )
-    except:
-        pass  # duplicate safe
+    except Exception as e:
+        print("Group save error:", e)
 
 
 def get_groups():
     try:
         return [g["chat_id"] for g in groups.find()]
-    except:
+    except Exception as e:
+        print("Group fetch error:", e)
         return []
 
 
 # ================= GET TOP USERS =================
 
 def get_top_users(limit=10):
-    return list(
-        users.find().sort("messages", -1).limit(limit)
-    )
+    try:
+        return list(
+            users.find().sort("messages", -1).limit(limit)
+        )
+    except Exception as e:
+        print("Top users error:", e)
+        return []
 
 
 # ================= GET INACTIVE USERS =================
@@ -110,31 +118,45 @@ def get_inactive_users(hours=6):
     now = int(time.time())
     gap = hours * 3600
 
-    return list(
-        users.find({
-            "last_active": {"$lt": now - gap}
-        }).limit(10)
-    )
+    try:
+        return list(
+            users.find({
+                "last_active": {"$lt": now - gap}
+            }).limit(10)
+        )
+    except Exception as e:
+        print("Inactive users error:", e)
+        return []
 
 
 # ================= GET USER =================
 
 def get_user(user_id):
-    return users.find_one({"user_id": user_id})
+    try:
+        return users.find_one({"user_id": user_id})
+    except Exception as e:
+        print("Get user error:", e)
+        return None
 
 
 # ================= RESET USER =================
 
 def reset_user(user_id):
-    users.delete_one({"user_id": user_id})
+    try:
+        users.delete_one({"user_id": user_id})
+    except Exception as e:
+        print("Reset error:", e)
 
 
 # ================= CLEAR HISTORY =================
 
 def clear_history(user_id):
-    users.update_one(
-        {"user_id": user_id},
-        {
-            "$set": {"history": []}
-        }
-    )
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {"history": []}
+            }
+        )
+    except Exception as e:
+        print("Clear history error:", e)
