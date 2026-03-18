@@ -1,7 +1,7 @@
 import os
 import time
 from pymongo import MongoClient
-from pymongo.errors import ServerSelectionTimeoutError
+from pymongo.errors import ServerSelectionTimeoutError, AutoReconnect
 
 # ================= CONNECTION =================
 
@@ -13,8 +13,10 @@ if not MONGO_URI:
 try:
     client = MongoClient(
         MONGO_URI,
-        serverSelectionTimeoutMS=5000,  # 🔥 fast fail
-        connectTimeoutMS=5000
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=5000,
+        retryWrites=True
     )
 
     db = client["telegram_bot"]
@@ -22,10 +24,11 @@ try:
     users = db["users"]
     groups = db["groups"]
 
-    # 🔥 INDEXES (FAST + SAFE)
+    # 🔥 INDEXES
     users.create_index("user_id", unique=True)
     users.create_index("last_active")
     users.create_index("messages")
+
     groups.create_index("chat_id", unique=True)
 
     print("Database connected successfully 🚀")
@@ -35,10 +38,27 @@ except ServerSelectionTimeoutError:
     raise
 
 
+# ================= SAFE EXECUTOR =================
+
+def safe_db_call(func, *args, **kwargs):
+    try:
+        return func(*args, **kwargs)
+    except AutoReconnect:
+        print("⚠️ Mongo reconnecting...")
+        time.sleep(1)
+        return func(*args, **kwargs)
+    except Exception as e:
+        print("DB error:", e)
+        return None
+
+
 # ================= UPDATE USER =================
 
 def update_user(user_id, name):
     now = int(time.time())
+
+    # 🔥 prevent blank overwrite
+    safe_name = name.strip() if name and name.strip() else None
 
     try:
         users.update_one(
@@ -57,9 +77,9 @@ def update_user(user_id, name):
                     "history": []
                 },
 
-                # 🔥 SAFE NAME (avoid overwriting with None)
+                # 🔥 ONLY update name if valid
                 "$set": {
-                    "name": name if name else "user",
+                    **({"name": safe_name} if safe_name else {}),
                     "last_active": now
                 },
 
@@ -77,14 +97,12 @@ def update_user(user_id, name):
 # ================= GROUP SYSTEM =================
 
 def save_group(chat_id):
-    try:
-        groups.update_one(
-            {"chat_id": chat_id},
-            {"$set": {"chat_id": chat_id}},
-            upsert=True
-        )
-    except Exception as e:
-        print("Group save error:", e)
+    safe_db_call(
+        groups.update_one,
+        {"chat_id": chat_id},
+        {"$set": {"chat_id": chat_id}},
+        upsert=True
+    )
 
 
 def get_groups():
@@ -98,19 +116,11 @@ def get_groups():
 # ================= STATS =================
 
 def get_total_users():
-    try:
-        return users.count_documents({})
-    except Exception as e:
-        print("Count error:", e)
-        return 0
+    return safe_db_call(users.count_documents, {}) or 0
 
 
 def get_active_users(min_messages=1):
-    try:
-        return users.count_documents({"messages": {"$gte": min_messages}})
-    except Exception as e:
-        print("Active users error:", e)
-        return 0
+    return safe_db_call(users.count_documents, {"messages": {"$gte": min_messages}}) or 0
 
 
 # ================= LEADERBOARD =================
@@ -148,9 +158,6 @@ def get_inactive_users(hours=6):
 # ================= CLEANUP =================
 
 def clean_dead_users():
-    """
-    Remove useless / broken users
-    """
     try:
         result = users.delete_many({
             "$or": [
@@ -166,25 +173,16 @@ def clean_dead_users():
 # ================= USER =================
 
 def get_user(user_id):
-    try:
-        return users.find_one({"user_id": user_id})
-    except Exception as e:
-        print("Get user error:", e)
-        return None
+    return safe_db_call(users.find_one, {"user_id": user_id})
 
 
 def delete_user(user_id):
-    try:
-        users.delete_one({"user_id": user_id})
-    except Exception as e:
-        print("Delete error:", e)
+    safe_db_call(users.delete_one, {"user_id": user_id})
 
 
 def clear_history(user_id):
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {"$set": {"history": []}}
-        )
-    except Exception as e:
-        print("Clear history error:", e)
+    safe_db_call(
+        users.update_one,
+        {"user_id": user_id},
+        {"$set": {"history": []}}
+    )
