@@ -15,19 +15,38 @@ from database import users
 from ai import generate_reply, detect_emotion
 
 
+# ---------------- GENDER DETECT ----------------
+
+def detect_gender(name):
+    name = name.lower()
+
+    female_names = ["aisha", "priya", "neha", "sneha", "pooja", "kajal"]
+
+    for f in female_names:
+        if f in name:
+            return "female"
+
+    return "male"
+
+
 # ---------------- SAVE USER ----------------
 
 def save_user(update):
     user = update.message.from_user
+    name = user.first_name
+
+    gender = detect_gender(name)
 
     users.update_one(
         {"user_id": user.id},
         {
             "$set": {
                 "username": user.username,
-                "name": user.first_name,
+                "name": name,
+                "gender": gender,
                 "last_active": datetime.utcnow()
-            }
+            },
+            "$inc": {"messages": 1}
         },
         upsert=True
     )
@@ -46,7 +65,6 @@ async def safe_send(context, chat_id, text):
             )
             return
         except TimedOut:
-            print(f"Retry {i+1} sending...")
             await asyncio.sleep(2)
         except Exception as e:
             print("SEND ERROR:", e)
@@ -56,34 +74,38 @@ async def safe_send(context, chat_id, text):
 # ---------------- START ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send(
-        context,
-        update.effective_chat.id,
-        "Hey… tum aa gaye 😌"
-    )
+    await safe_send(context, update.effective_chat.id, "Hey… tum aa gaye 😌")
 
 
-# ---------------- TAG ALL ----------------
+# ---------------- TAGALL (AI PERSONALIZED) ----------------
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users_list = list(users.find().limit(40))
-
-    if not users_list:
-        await safe_send(context, update.effective_chat.id, "Koi users nahi mile 😅")
-        return
-
-    message = "👥 Attention everyone:\n\n"
+    users_list = list(users.find().limit(20))
 
     for user in users_list:
-        uid = user.get("user_id")
-        name = user.get("name", "User")
+        try:
+            uid = user["user_id"]
+            name = user.get("name", "User")
 
-        message += f'<a href="tg://user?id={uid}">{name}</a> '
+            prompt = f"Call {name} in group in fun teasing Hinglish way"
 
-    await safe_send(context, update.effective_chat.id, message)
+            reply = await generate_reply(uid, prompt)
+
+            message = f'<a href="tg://user?id={uid}">{name}</a>, {reply}'
+
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=message,
+                parse_mode="HTML"
+            )
+
+            await asyncio.sleep(1)
+
+        except Exception as e:
+            print("TAG ERROR:", e)
 
 
-# ---------------- MESSAGE HANDLER ----------------
+# ---------------- MESSAGE ----------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -98,33 +120,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username.lower()
     bot_id = context.bot.id
 
-    print("CHAT:", chat_type)
-    print("USER:", user_id)
-    print("TEXT:", text)
-
-    # ---------------- DETECT REPLY ----------------
-
-    is_reply_to_bot = False
+    # reply detect
+    is_reply = False
     if update.message.reply_to_message:
-        replied_user = update.message.reply_to_message.from_user
-        if replied_user and replied_user.id == bot_id:
-            is_reply_to_bot = True
+        if update.message.reply_to_message.from_user.id == bot_id:
+            is_reply = True
 
-    # ---------------- GROUP LOGIC ----------------
-
+    # group logic
     if chat_type in ["group", "supergroup"]:
-        is_mention = f"@{bot_username}" in text
-        is_admin_call = "@admin" in text
-
-        if not (is_mention or is_admin_call or is_reply_to_bot):
+        if f"@{bot_username}" not in text and "@admin" not in text and not is_reply:
             return
-
-    # ---------------- SAVE USER ----------------
 
     save_user(update)
 
     try:
-        # Emotion detection
         emotion = await detect_emotion(text)
 
         users.update_one(
@@ -133,17 +142,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             upsert=True
         )
 
-        # AI reply
         reply = await generate_reply(user_id, text)
-        print("AI:", reply)
 
         if not reply:
-            reply = "Tum ajeeb ho… phir se bolo na 😏"
+            reply = "Tum ajeeb ho 😏"
 
-        # 🔥 ALWAYS mention user (clickable)
-        final_reply = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
+        final = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
 
-        await safe_send(context, update.effective_chat.id, final_reply)
+        await safe_send(context, update.effective_chat.id, final)
 
     except Exception as e:
         print("ERROR:", e)
