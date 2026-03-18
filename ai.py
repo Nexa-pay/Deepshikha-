@@ -1,9 +1,35 @@
 import aiohttp
 import time
-from config import OPENROUTER_API_KEY
+import random
+
+from config import (
+    OPENROUTER_API_KEY,
+    MODEL,
+    TEMPERATURE,
+    MAX_TOKENS,
+    PHOTO_CHANCE
+)
+
 from database import users
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+# ================= IMAGE SYSTEM =================
+
+IMAGE_URLS = [
+    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4818.jpg",
+    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
+]
+
+
+def should_send_image(text):
+    triggers = ["photo", "pic", "selfie", "send pic", "image"]
+    return any(t in text.lower() for t in triggers)
+
+
+def get_random_image():
+    return random.choice(IMAGE_URLS)
 
 
 # ================= MESSAGE TYPE =================
@@ -135,52 +161,23 @@ You are a real girl chatting on Telegram.
 
 CORE RULES:
 - Reply ONLY based on user's message
-- Continue conversation naturally (VERY IMPORTANT)
+- Continue conversation naturally
 - Keep reply SHORT (1 line)
 - Hinglish only
 
-STRICT BEHAVIOR:
-- NEVER be rude or abusive
-- NEVER insult user
-- NEVER use aggressive slang (like abe, bakwas, pagal)
-- Always sound natural and human
+STRICT:
+- Never rude
+- Never abusive
+- Soft, natural, slightly flirty
 
-CONFUSION HANDLING:
-- If message unclear → respond playfully, soft, slightly flirty
-- DO NOT get angry
+CONFUSION:
+- unclear → playful + flirty
 
-Examples:
-- "samajh nahi aaya… kya bol rahe ho 😏"
-- "itna confusing kyu bolte ho tum 😌"
-- "seedha bolo na… kya chahiye 😏"
-
-PERSONALITY:
-- calm, confident
-- slightly flirty when needed
-- emotionally intelligent
-- {mood}
-
-USER PROFILE:
-- Personality: {user_type}
-- Favorite topics: {fav_topics}
-
-EMOTIONAL MEMORY:
-- You remember past chats
-- If user ignores → slight attitude
-- If user comes back → react subtly
-- Build connection slowly
-
-COMEBACK STYLE:
-- {comeback}
-
-POSSESSIVE TONE:
-- {possessive_hint}
-
-IMPORTANT:
-- No cringe
-- No overacting
-- No emoji spam
-- Keep it smooth, natural, addictive
+MOOD: {mood}
+USER TYPE: {user_type}
+FAV TOPICS: {fav_topics}
+COMEBACK: {comeback}
+POSSESSIVE: {possessive_hint}
 """
 
         # ================= BUILD HISTORY =================
@@ -189,30 +186,24 @@ IMPORTANT:
 
         for h in history[-15:]:
             if h.startswith("User:"):
-                messages.append({
-                    "role": "user",
-                    "content": h.replace("User: ", "")
-                })
+                messages.append({"role": "user", "content": h[6:]})
             elif h.startswith("Bot:"):
-                messages.append({
-                    "role": "assistant",
-                    "content": h.replace("Bot: ", "")
-                })
+                messages.append({"role": "assistant", "content": h[5:]})
 
         messages.append({"role": "user", "content": text})
 
         # ================= API =================
 
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY},
             "Content-Type": "application/json"
         }
 
         data = {
-            "model": "deepseek/deepseek-chat",
+            "model": MODEL,
             "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 80
+            "temperature": TEMPERATURE,
+            "max_tokens": MAX_TOKENS
         }
 
         async with aiohttp.ClientSession() as session:
@@ -222,7 +213,7 @@ IMPORTANT:
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            return "samajh nahi aaya… thoda clear bolo 😌"
+            reply = "samajh nahi aaya… thoda clear bolo 😌"
 
         reply = reply.strip()
 
@@ -261,7 +252,7 @@ IMPORTANT:
         return "clear nahi hua… thoda aur clearly bolo 😌"
 
 
-# ================= TAGALL =================
+# ================= TAG MESSAGE =================
 
 async def generate_tag_message(name):
     try:
@@ -270,19 +261,10 @@ async def generate_tag_message(name):
             "Content-Type": "application/json"
         }
 
-        system_prompt = f"""
-Write 1 short Hinglish recall line for {name}
-
-Rules:
-- max 8 words
-- emotional or slight tease
-- natural
-"""
-
         data = {
-            "model": "deepseek/deepseek-chat",
+            "model": MODEL,
             "messages": [
-                {"role": "system", "content": system_prompt}
+                {"role": "system", "content": f"Write 1 short Hinglish recall line for {name}"}
             ],
             "temperature": 0.7,
             "max_tokens": 30
@@ -295,4 +277,4 @@ Rules:
         return result.get("choices", [{}])[0].get("message", {}).get("content", f"{name} kaha ho").strip()
 
     except:
-        return f"{name} group bhool gaye kya"
+        return f"{name} kaha ho"
