@@ -1,6 +1,6 @@
-from pymongo import MongoClient
 import os
 import time
+from pymongo import MongoClient
 
 # ================= CONNECTION =================
 
@@ -15,14 +15,14 @@ db = client["telegram_bot"]
 users = db["users"]
 groups = db["groups"]
 
-# 🔥 INDEXES (NO DUPLICATE)
+# 🔥 INDEXES (NO DUPLICATE + FAST)
 users.create_index("user_id", unique=True)
 groups.create_index("chat_id", unique=True)
 
 print("Database connected successfully 🚀")
 
 
-# ================= UPDATE USER (FINAL FIX) =================
+# ================= UPDATE USER =================
 
 def update_user(user_id, name):
     now = int(time.time())
@@ -31,7 +31,7 @@ def update_user(user_id, name):
         users.update_one(
             {"user_id": user_id},
             {
-                # 🔥 only insert fields here (NO name)
+                # 🔥 insert only once
                 "$setOnInsert": {
                     "user_id": user_id,
                     "messages": 0,
@@ -45,7 +45,7 @@ def update_user(user_id, name):
                     "history": []
                 },
 
-                # 🔥 update always
+                # 🔥 always update
                 "$set": {
                     "name": name,
                     "last_active": now
@@ -77,10 +77,28 @@ def save_group(chat_id):
 
 def get_groups():
     try:
-        return [g["chat_id"] for g in groups.find()]
+        return [g["chat_id"] for g in groups.find({}, {"_id": 0, "chat_id": 1})]
     except Exception as e:
         print("Group fetch error:", e)
         return []
+
+
+# ================= STATS =================
+
+def get_total_users():
+    try:
+        return users.count_documents({})
+    except Exception as e:
+        print("Count error:", e)
+        return 0
+
+
+def get_active_users(min_messages=1):
+    try:
+        return users.count_documents({"messages": {"$gte": min_messages}})
+    except Exception as e:
+        print("Active users error:", e)
+        return 0
 
 
 # ================= GET TOP USERS =================
@@ -88,7 +106,9 @@ def get_groups():
 def get_top_users(limit=10):
     try:
         return list(
-            users.find().sort("messages", -1).limit(limit)
+            users.find({}, {"_id": 0, "name": 1, "messages": 1})
+            .sort("messages", -1)
+            .limit(limit)
         )
     except Exception as e:
         print("Top users error:", e)
@@ -103,9 +123,10 @@ def get_inactive_users(hours=6):
 
     try:
         return list(
-            users.find({
-                "last_active": {"$lt": now - gap}
-            }).limit(10)
+            users.find(
+                {"last_active": {"$lt": now - gap}},
+                {"_id": 0, "name": 1}
+            ).limit(10)
         )
     except Exception as e:
         print("Inactive users error:", e)
@@ -122,16 +143,14 @@ def get_user(user_id):
         return None
 
 
-# ================= RESET USER =================
+# ================= DELETE / CLEAN =================
 
-def reset_user(user_id):
+def delete_user(user_id):
     try:
         users.delete_one({"user_id": user_id})
     except Exception as e:
-        print("Reset error:", e)
+        print("Delete error:", e)
 
-
-# ================= CLEAR HISTORY =================
 
 def clear_history(user_id):
     try:
