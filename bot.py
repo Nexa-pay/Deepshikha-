@@ -59,8 +59,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_send(
         context,
         update.effective_chat.id,
-        "Hey… you came back 😌"
+        "Hey… tum aa gaye 😌"
     )
+
+
+# ---------------- TAG ALL ----------------
+
+async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    users_list = list(users.find().limit(40))
+
+    if not users_list:
+        await safe_send(context, update.effective_chat.id, "Koi users nahi mile 😅")
+        return
+
+    message = "👥 Attention everyone:\n\n"
+
+    for user in users_list:
+        uid = user.get("user_id")
+        name = user.get("name", "User")
+
+        message += f'<a href="tg://user?id={uid}">{name}</a> '
+
+    await safe_send(context, update.effective_chat.id, message)
 
 
 # ---------------- MESSAGE HANDLER ----------------
@@ -82,7 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("USER:", user_id)
     print("TEXT:", text)
 
-    # ---------------- DETECT REPLY TO BOT ----------------
+    # ---------------- DETECT REPLY ----------------
 
     is_reply_to_bot = False
     if update.message.reply_to_message:
@@ -96,7 +116,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_mention = f"@{bot_username}" in text
         is_admin_call = "@admin" in text
 
-        # Only respond if one of conditions met
         if not (is_mention or is_admin_call or is_reply_to_bot):
             return
 
@@ -119,12 +138,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("AI:", reply)
 
         if not reply:
-            reply = "Say that again 😏"
+            reply = "Tum ajeeb ho… phir se bolo na 😏"
 
-        # 🔥 ALWAYS MENTION USER (CLICKABLE)
+        # 🔥 ALWAYS mention user (clickable)
         final_reply = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
 
-        # Send message
         await safe_send(context, update.effective_chat.id, final_reply)
 
     except Exception as e:
@@ -137,6 +155,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("tagall", tagall))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot running...")
