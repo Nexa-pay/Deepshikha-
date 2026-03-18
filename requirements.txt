@@ -8,9 +8,8 @@ requests==2.31.0
 
 python-dotenv==1.0.1
 
-# 🔥 Voice (TTS)
-gtts==2.5.1
-pydub==0.25.1
+# 🔥 Edge TTS (BEST FREE VOICE)
+edge-tts==6.1.9
 
-# 🖼 Image processing (optional future safe)
+# 🖼 Optional
 Pillow==10.2.0
