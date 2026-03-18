@@ -15,6 +15,7 @@ def get_env(key, default=None, cast=str):
 OPENROUTER_API_KEY = get_env("OPENROUTER_API_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
 MONGO_URI = get_env("MONGO_URI")
+ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")  # 🔥 NEW
 
 if not OPENROUTER_API_KEY:
     raise ValueError("❌ OPENROUTER_API_KEY missing")
@@ -38,9 +39,7 @@ MODEL = get_env("MODEL", "deepseek/deepseek-chat")
 TEMPERATURE = get_env("TEMPERATURE", 0.75, float)
 MAX_TOKENS = get_env("MAX_TOKENS", 80, int)
 
-# reply creativity control
-CREATIVITY_MODE = get_env("CREATIVITY_MODE", "balanced")  
-# options: low / balanced / high
+CREATIVITY_MODE = get_env("CREATIVITY_MODE", "balanced")
 
 
 # ================= HUMAN BEHAVIOR =================
@@ -62,7 +61,6 @@ JEALOUSY_CHANCE = get_env("JEALOUSY_CHANCE", 12, int)
 RANDOM_MESSAGE_CHANCE = get_env("RANDOM_MESSAGE_CHANCE", 8, int)
 ATTACHMENT_GAIN = get_env("ATTACHMENT_GAIN", 2, int)
 
-# 🔥 new controls
 POSSESSIVE_THRESHOLD = get_env("POSSESSIVE_THRESHOLD", 80, int)
 LOVE_THRESHOLD = get_env("LOVE_THRESHOLD", 120, int)
 
@@ -73,9 +71,19 @@ PHOTO_CHANCE = get_env("PHOTO_CHANCE", 50, int)
 STICKER_CHANCE = get_env("STICKER_CHANCE", 6, int)
 
 
+# ================= VOICE CONFIG =================
+
+VOICE_ID = get_env("VOICE_ID", "Rachel")  # 🔥 female voice
+VOICE_MODEL = get_env("VOICE_MODEL", "eleven_multilingual_v2")
+
+# whisper / tone control
+VOICE_STYLE = get_env("VOICE_STYLE", "soft")  
+# options: soft / normal
+
+
 # ================= FEATURE TOGGLES =================
 
-ENABLE_VOICE = get_env("ENABLE_VOICE", "False").lower() == "true"
+ENABLE_VOICE = get_env("ENABLE_VOICE", "True").lower() == "true"
 ENABLE_STICKERS = get_env("ENABLE_STICKERS", "True").lower() == "true"
 ENABLE_IMAGES = get_env("ENABLE_IMAGES", "True").lower() == "true"
 
