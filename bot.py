@@ -26,20 +26,31 @@ from ai import generate_reply, generate_tag_message
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = 123456789
+OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 
+# ================= MEDIA =================
+
+GITHUB_IMAGES = [
+    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4818.jpg",
+    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
+]
+
+STICKERS = {
+    "tease": [],
+    "cute": [],
+    "attitude": [],
+    "love": []
+}
 
 # ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("hii… main Deepsikha hu 😏")
 
-
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
 
-
-# ================= AUTO GROUP DETECT =================
+# ================= BOT ADDED =================
 
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result: ChatMemberUpdated = update.my_chat_member
@@ -56,8 +67,7 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-
-# ================= WELCOME SYSTEM =================
+# ================= WELCOME =================
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.new_chat_members:
@@ -66,7 +76,7 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         name = member.first_name
 
-        await asyncio.sleep(random.randint(1, 3))  # ⏳ delay
+        await asyncio.sleep(random.randint(1, 3))
 
         msg = random.choice([
             f"{name}… late aaye ho 😏",
@@ -77,99 +87,47 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(msg)
 
-
-# ================= TAG ALL =================
-
-async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type not in ["group", "supergroup"]:
-        return await update.message.reply_text("group me use karo")
-
-    members = context.application.bot_data.get("members", [])
-
-    if not members:
-        return await update.message.reply_text("koi active nahi hai")
-
-    msg = "📢 suno sab:\n\n"
-
-    for user in members[:10]:
-        name = user["name"]
-        ai_msg = await generate_tag_message(name)
-        msg += f"{name} — {ai_msg}\n"
-
-    await update.message.reply_text(msg)
-
-
-# ================= LEADERBOARD =================
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top_users = get_top_users()
-
-    if not top_users:
-        return await update.message.reply_text("abhi koi active nahi hai")
-
-    text = "🏆 active users:\n\n"
-
-    for i, user in enumerate(top_users, start=1):
-        text += f"{i}. {user['name']} — {user.get('messages', 0)} 🔥\n"
-
-    await update.message.reply_text(text)
-
-
-# ================= DATABASE =================
-
-async def database(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = len(get_top_users(1000))
-    await update.message.reply_text(f"total users: {total}")
-
-
-# ================= REVIVE =================
-
-async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    inactive = get_inactive_users()
-
-    if not inactive:
-        return
-
-    names = [u["name"] for u in inactive[:5]]
-    msg = f"{', '.join(names)} kaha gayab ho gaye 😏"
-
-    await update.message.reply_text(msg)
-
-
 # ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
-        return
+        return await update.message.reply_text("not allowed")
 
     msg = " ".join(context.args)
 
     if not msg:
         return await update.message.reply_text("message bhejo")
 
-    sent = 0
+    sent, failed = 0, 0
 
     for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, msg)
             sent += 1
         except:
-            pass
+            failed += 1
 
     for u in users.find():
         try:
             await context.bot.send_message(u["user_id"], msg)
             sent += 1
         except:
-            pass
+            failed += 1
 
-    await update.message.reply_text(f"broadcast done… {sent} places 😏")
+    await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
 
-
-# ================= MAIN MESSAGE =================
+# ================= MAIN =================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    # 🔥 STICKER ID GETTER
+    if update.message.sticker:
+        await update.message.reply_text(update.message.sticker.file_id)
+        return
+
+    if not update.message.text:
         return
 
     user = update.message.from_user
@@ -177,11 +135,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     text_lower = text.lower()
     chat_type = update.message.chat.type
+    chat_id = update.message.chat_id
 
     bot_username = context.bot.username.lower()
     is_reply = update.message.reply_to_message
-
-    chat_id = update.message.chat_id
 
     # SAVE GROUP
     if chat_type in ["group", "supergroup"]:
@@ -190,30 +147,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # SAVE USER
     update_user(user.id, name)
 
+    # ================= IMAGE =================
+
+    if any(x in text_lower for x in ["photo", "pic", "selfie"]):
+        if random.randint(1, 100) <= 50:
+            return await update.message.reply_text("itni jaldi photo? 😏")
+
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=random.choice(GITHUB_IMAGES)
+        )
+        return
+
+    # ================= STICKERS =================
+
+    if any(x in text_lower for x in ["lol", "haha"]):
+        if STICKERS["cute"]:
+            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["cute"]))
+        return
+
+    if any(x in text_lower for x in ["miss", "love"]):
+        if STICKERS["love"]:
+            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["love"]))
+        return
+
+    if any(x in text_lower for x in ["ignore", "huh"]):
+        if STICKERS["attitude"]:
+            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS["attitude"]))
+        return
+
     # ================= JEALOUSY =================
 
     if chat_type in ["group", "supergroup"]:
         if "deepsikha" not in text_lower and not is_reply:
             if random.randint(1, 100) <= 12:
-                msg = random.choice([
+                return await update.message.reply_text(random.choice([
                     "hmm… mujhe ignore karke dusro se baat 😒",
                     "acha… ab main boring lag rahi hu?",
                     "mere bina bhi kaafi baate ho rahi hai 😏",
                     "thoda mujhe bhi yaad kar liya karo",
-                ])
-                return await update.message.reply_text(msg)
-
-    # ================= QUICK RESPONSES =================
-
-    if "who are you" in text_lower or "tum kaun ho" in text_lower:
-        return await update.message.reply_text(
-            "main Deepsikha hu… thodi alag hu sab se 😌"
-        )
-
-    if "owner" in text_lower:
-        return await update.message.reply_text(
-            "AAKASH mera creator hai… kaafi special hai wo 😏"
-        )
+                ]))
 
     # ================= TRIGGER =================
 
@@ -250,33 +223,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if random.randint(1, 100) <= 8:
         await asyncio.sleep(random.randint(5, 15))
-
-        msgs = [
+        await context.bot.send_message(chat_id, random.choice([
             "sab itne chup kyun hai aaj",
             "koi interesting banda hai yaha?",
             "mujhe ignore kar rahe ho kya 😒",
             "itna dead group kyun hai",
-        ]
+        ]))
 
-        await context.bot.send_message(chat_id, random.choice(msgs))
+    # 🎭 RANDOM STICKER
+    if random.randint(1, 100) <= 6:
+        mood = random.choice(list(STICKERS.keys()))
+        if STICKERS[mood]:
+            await context.bot.send_sticker(chat_id=chat_id, sticker=random.choice(STICKERS[mood]))
 
-
-# ================= AUTO MESSAGE =================
+# ================= AUTO =================
 
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
-    msgs = [
-        "aaj sab itne chup kyu hai",
-        "koi baat karega ya sab busy hai",
-        "itna silent group… interesting nahi hai",
-        "kisi ko meri yaad bhi aati hai",
-    ]
-
     for chat_id in get_groups():
         try:
-            await context.bot.send_message(chat_id, random.choice(msgs))
+            await context.bot.send_message(chat_id, random.choice([
+                "aaj sab itne chup kyu hai",
+                "koi baat karega ya sab busy hai",
+                "itna silent group… interesting nahi hai",
+                "kisi ko meri yaad bhi aati hai",
+            ]))
         except:
             pass
-
 
 # ================= MAIN =================
 
@@ -285,22 +257,17 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
-    app.add_handler(CommandHandler("tagall", tagall))
-    app.add_handler(CommandHandler("leaderboard", leaderboard))
-    app.add_handler(CommandHandler("database", database))
-    app.add_handler(CommandHandler("revive", revive))
     app.add_handler(CommandHandler("broadcast", broadcast))
 
     app.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     main()
