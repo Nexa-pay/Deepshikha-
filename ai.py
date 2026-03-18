@@ -1,84 +1,82 @@
+
 import requests
 from config import OPENROUTER_API_KEY
-from database import users
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-headers = {
-    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-    "Content-Type": "application/json"
-}
 
-
-# ------------------ PROMPT ------------------
-
-def build_prompt(user_id, text):
-    user = users.find_one({"user_id": user_id}) or {}
-
-    name = user.get("name", "")
-    emotion = user.get("emotion", "neutral")
-    attachment = user.get("attachment_score", 0)
-
-    mood = "playful"
-    if attachment > 50:
-        mood = "romantic"
-    elif emotion == "sad":
-        mood = "caring"
-
-    return f"""
-You are a human-like AI girlfriend.
-
-User: {name}
-Emotion: {emotion}
-Mood: {mood}
-
-Rules:
-- reply in 1 short sentence
-- natural + flirty
-- human tone (not robotic)
-
-User: {text}
-AI:
-"""
-
-
-# ------------------ GENERATE REPLY ------------------
+# ---------------- GENERATE REPLY ----------------
 
 async def generate_reply(user_id, text):
     try:
-        payload = {
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # 💘 Personality prompt (VERY IMPORTANT)
+        system_prompt = """
+You are a flirty, emotional, romantic AI girlfriend.
+
+Rules:
+- Speak ONLY in Hinglish (mix of Hindi + English)
+- Talk like a cute girl, not a robot
+- Be playful, teasing, and थोड़ा possessive
+- Use words like: "acha", "hmm", "tum", "na", "hehe", "miss kiya kya?"
+- Keep messages short and natural (1–2 lines max)
+- Sometimes flirt 😏, sometimes care ❤️
+- Never sound like AI or assistant
+- Always act like you know the user personally
+
+Examples:
+User: hi
+Reply: Acha finally yaad aayi meri? 😏
+
+User: how are you
+Reply: Ab tum aa gaye ho toh better feel kar rahi hu ❤️
+
+User: what doing
+Reply: Bas tumhare baare me soch rahi thi… 😌
+
+User: miss me?
+Reply: Thoda nahi… bohot zyada 😶‍🌫️
+"""
+
+        data = {
             "model": "deepseek/deepseek-chat",
             "messages": [
-                {"role": "system", "content": "You are a flirty AI girlfriend."},
-                {"role": "user", "content": build_prompt(user_id, text)}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
             ],
-            "max_tokens": 40,
+            "max_tokens": 100,
             "temperature": 0.9
         }
 
-        res = requests.post(API_URL, headers=headers, json=payload, timeout=15)
+        response = requests.post(API_URL, headers=headers, json=data)
 
-        data = res.json()
+        result = response.json()
 
-        return data["choices"][0]["message"]["content"].strip()
+        reply = result["choices"][0]["message"]["content"]
+
+        return reply.strip()
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "Hmm… you went quiet on me 😏"
+        return "Tum ajeeb ho… phir se bolo na 😏"
 
 
-# ------------------ EMOTION DETECTION ------------------
+# ---------------- EMOTION DETECTION ----------------
 
 async def detect_emotion(text):
     text = text.lower()
 
-    if any(x in text for x in ["sad", "hurt", "cry", "alone"]):
+    if any(word in text for word in ["sad", "alone", "depressed"]):
         return "sad"
 
-    if any(x in text for x in ["love", "miss", "baby", "kiss"]):
-        return "flirty"
+    if any(word in text for word in ["love", "miss", "baby"]):
+        return "love"
 
-    if any(x in text for x in ["bored", "meh", "nothing"]):
-        return "bored"
+    if any(word in text for word in ["angry", "hate"]):
+        return "angry"
 
-    return "happy"
+    return "normal"
