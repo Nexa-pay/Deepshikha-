@@ -15,8 +15,9 @@ db = client["telegram_bot"]
 users = db["users"]
 groups = db["groups"]
 
-# 🔥 INDEXES (NO DUPLICATE + FAST)
+# 🔥 INDEXES (FAST + SAFE)
 users.create_index("user_id", unique=True)
+users.create_index("last_active")
 groups.create_index("chat_id", unique=True)
 
 print("Database connected successfully 🚀")
@@ -31,7 +32,7 @@ def update_user(user_id, name):
         users.update_one(
             {"user_id": user_id},
             {
-                # 🔥 insert only once
+                # 🔥 first time insert only
                 "$setOnInsert": {
                     "user_id": user_id,
                     "messages": 0,
@@ -101,7 +102,7 @@ def get_active_users(min_messages=1):
         return 0
 
 
-# ================= GET TOP USERS =================
+# ================= LEADERBOARD =================
 
 def get_top_users(limit=10):
     try:
@@ -115,7 +116,7 @@ def get_top_users(limit=10):
         return []
 
 
-# ================= GET INACTIVE USERS =================
+# ================= INACTIVE USERS =================
 
 def get_inactive_users(hours=6):
     now = int(time.time())
@@ -133,7 +134,21 @@ def get_inactive_users(hours=6):
         return []
 
 
-# ================= GET USER =================
+# ================= CLEANUP (🔥 IMPORTANT) =================
+
+def clean_dead_users():
+    """
+    Remove users who blocked bot / invalid users
+    (call this after broadcast failures)
+    """
+    try:
+        result = users.delete_many({"messages": {"$lte": 0}})
+        print(f"🧹 Cleaned users: {result.deleted_count}")
+    except Exception as e:
+        print("Cleanup error:", e)
+
+
+# ================= USER =================
 
 def get_user(user_id):
     try:
@@ -142,8 +157,6 @@ def get_user(user_id):
         print("Get user error:", e)
         return None
 
-
-# ================= DELETE / CLEAN =================
 
 def delete_user(user_id):
     try:
