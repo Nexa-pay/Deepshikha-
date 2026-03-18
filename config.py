@@ -14,7 +14,7 @@ def get_env(key, default=None, cast=str):
         return default
 
 
-# 🔥 BOOLEAN PARSER (FIX)
+# 🔥 BOOLEAN PARSER
 def get_bool(key, default=False):
     value = os.getenv(key)
     if value is None:
@@ -22,12 +22,20 @@ def get_bool(key, default=False):
     return value.lower() in ["true", "1", "yes", "on"]
 
 
+# 🔥 SAFE RANGE FIX
+def clamp(value, min_v, max_v):
+    try:
+        return max(min_v, min(max_v, value))
+    except:
+        return min_v
+
+
 # ================= CORE =================
 
 OPENROUTER_API_KEY = get_env("OPENROUTER_API_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
 MONGO_URI = get_env("MONGO_URI")
-ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")  # optional
+ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")
 
 if not OPENROUTER_API_KEY:
     raise ValueError("❌ OPENROUTER_API_KEY missing")
@@ -48,45 +56,48 @@ OWNER_ID = get_env("OWNER_ID", 123456789, int)
 
 MODEL = get_env("MODEL", "deepseek/deepseek-chat")
 
-TEMPERATURE = get_env("TEMPERATURE", 0.75, float)
-MAX_TOKENS = get_env("MAX_TOKENS", 80, int)
+TEMPERATURE = clamp(get_env("TEMPERATURE", 0.75, float), 0.1, 1.5)
+MAX_TOKENS = clamp(get_env("MAX_TOKENS", 80, int), 20, 300)
 
 CREATIVITY_MODE = get_env("CREATIVITY_MODE", "balanced")
 
 
 # ================= HUMAN BEHAVIOR =================
 
-MIN_DELAY = get_env("MIN_DELAY", 2, int)
-MAX_DELAY = get_env("MAX_DELAY", 6, int)
+MIN_DELAY = clamp(get_env("MIN_DELAY", 2, int), 1, 10)
+MAX_DELAY = clamp(get_env("MAX_DELAY", 6, int), 2, 15)
 
-TYPING_PROBABILITY = get_env("TYPING_PROBABILITY", 100, int)
+TYPING_PROBABILITY = clamp(get_env("TYPING_PROBABILITY", 100, int), 0, 100)
 
 
 # ================= AUTO SYSTEM =================
 
-AUTO_MESSAGE_INTERVAL = get_env("AUTO_MESSAGE_INTERVAL", 1800, int)
-AUTO_MESSAGE_CHANCE = get_env("AUTO_MESSAGE_CHANCE", 10, int)  # 🔥 NEW
+AUTO_MESSAGE_INTERVAL = clamp(get_env("AUTO_MESSAGE_INTERVAL", 1800, int), 60, 7200)
+AUTO_MESSAGE_CHANCE = clamp(get_env("AUTO_MESSAGE_CHANCE", 10, int), 1, 100)
 
 
 # ================= EMOTIONAL CONTROL =================
 
-JEALOUSY_CHANCE = get_env("JEALOUSY_CHANCE", 12, int)
-RANDOM_MESSAGE_CHANCE = get_env("RANDOM_MESSAGE_CHANCE", 8, int)
-ATTACHMENT_GAIN = get_env("ATTACHMENT_GAIN", 2, int)
+JEALOUSY_CHANCE = clamp(get_env("JEALOUSY_CHANCE", 12, int), 0, 100)
+RANDOM_MESSAGE_CHANCE = clamp(get_env("RANDOM_MESSAGE_CHANCE", 8, int), 0, 100)
 
-POSSESSIVE_THRESHOLD = get_env("POSSESSIVE_THRESHOLD", 80, int)
-LOVE_THRESHOLD = get_env("LOVE_THRESHOLD", 120, int)
+ATTACHMENT_GAIN = clamp(get_env("ATTACHMENT_GAIN", 2, int), 1, 10)
+
+POSSESSIVE_THRESHOLD = clamp(get_env("POSSESSIVE_THRESHOLD", 80, int), 10, 200)
+LOVE_THRESHOLD = clamp(get_env("LOVE_THRESHOLD", 120, int), 20, 300)
 
 
 # ================= MEDIA CONTROL =================
 
-PHOTO_CHANCE = get_env("PHOTO_CHANCE", 50, int)
-STICKER_CHANCE = get_env("STICKER_CHANCE", 6, int)
+PHOTO_CHANCE = clamp(get_env("PHOTO_CHANCE", 50, int), 0, 100)
+STICKER_CHANCE = clamp(get_env("STICKER_CHANCE", 6, int), 0, 100)
 
 
 # ================= VOICE CONFIG =================
 
-VOICE_ID = get_env("VOICE_ID", "Rachel")
+# 🔥 DEFAULT = BELLA (BEST FEMALE)
+VOICE_ID = get_env("VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+
 VOICE_MODEL = get_env("VOICE_MODEL", "eleven_multilingual_v2")
 
 VOICE_STYLE = get_env("VOICE_STYLE", "soft")  # soft / normal
@@ -109,4 +120,4 @@ if DEBUG:
 
 # ================= STARTUP LOG =================
 
-print("✅ Config Loaded")
+print("✅ Config Loaded (Pro Mode)")
