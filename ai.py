@@ -112,7 +112,7 @@ async def generate_reply(user_id, name, text):
 
         # ================= MEMORY =================
 
-        memory_context = "\n".join(history[-5:])
+        memory_context = "\n".join(history[-6:])
         user_type = personality_data.get("type", "normal")
         fav_topics = ", ".join(fav_data.get("topics", []))
 
@@ -123,9 +123,9 @@ You are a real girl chatting on Telegram.
 
 RULES:
 - Reply ONLY based on user's message
+- Continue conversation naturally
 - Keep reply SHORT (1 line)
 - Hinglish only
-- Natural human texting
 
 PERSONALITY:
 - calm, confident
@@ -144,12 +144,6 @@ OBSESSION:
 - Make user feel noticed
 - Slight emotional pull
 - Do not overdo
-
-BEHAVIOR:
-- Flirty → flirty
-- Question → correct answer
-- Dry → short reply
-- Normal → natural
 
 IMPORTANT:
 - No cringe
@@ -190,7 +184,7 @@ Message: {text}
 
         reply = reply.strip()
 
-        # ================= SAVE =================
+        # ================= SAVE (FIXED 🔥) =================
 
         users.update_one(
             {"user_id": user_id},
@@ -205,8 +199,11 @@ Message: {text}
                 },
                 "$push": {
                     "history": {
-                        "$each": [text],
-                        "$slice": -10
+                        "$each": [
+                            f"User: {text}",
+                            f"Bot: {reply}"
+                        ],
+                        "$slice": -12
                     }
                 }
             },
