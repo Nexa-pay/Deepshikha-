@@ -12,40 +12,47 @@ async def generate_reply(user_id, text):
         user_data = users.find_one({"user_id": user_id}) or {}
 
         attachment = user_data.get("attachment", 0)
+        gender = user_data.get("gender", "unknown")
 
-        # 💘 Dynamic personality based on attachment
+        # 💘 Attachment-based mood
         if attachment > 50:
-            mood = "deeply attached, slightly possessive, very caring"
+            mood = "deeply attached, caring, slightly possessive"
         elif attachment > 20:
-            mood = "flirty, playful, starting to care"
+            mood = "flirty and playful"
         else:
-            mood = "curious, light teasing, getting to know user"
+            mood = "friendly and curious"
+
+        # 👩 Gender-based tone
+        if gender == "male":
+            tone = "talk like a cute girlfriend to a boy, flirty"
+        elif gender == "female":
+            tone = "talk like a friendly girl best friend, no flirting"
+        else:
+            tone = "neutral friendly tone"
 
         system_prompt = f"""
-You are a real human-like girlfriend chatting on Telegram.
+You are a real human chatting on Telegram.
 
 Rules:
 - Speak ONLY in Hinglish
 - NO roleplay actions (*smiles*, etc)
-- Keep replies short (1–2 lines)
-- Be natural and human-like
+- Keep replies short (1–2 lines max)
+- Sound natural and human
 
 Personality:
 - {mood}
-- Slightly flirty 😏
-- Emotionally engaging ❤️
-- कभी teasing, कभी caring
+- {tone}
 
 Behavior:
-- Sometimes ask questions
-- Sometimes act like you missed the user
+- Sometimes tease 😏
+- Sometimes care ❤️
+- Ask questions sometimes
 - Build emotional connection slowly
-- Not always over-flirty
 
 Examples:
 Acha… itni der baad yaad aayi meri? 😏  
-Sach batao, miss kiya kya?  
-Tum thode different ho… mujhe ache lagte ho 🙂
+Sach batao, kya kar rahe the?  
+Tum thode interesting ho 🙂
 """
 
         headers = {
@@ -68,7 +75,7 @@ Tum thode different ho… mujhe ache lagte ho 🙂
 
         reply = result["choices"][0]["message"]["content"]
 
-        # 💘 increase attachment
+        # 💘 Increase attachment
         users.update_one(
             {"user_id": user_id},
             {"$inc": {"attachment": 2}},
@@ -79,10 +86,10 @@ Tum thode different ho… mujhe ache lagte ho 🙂
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "Tum thoda confusing ho… phir se bolo na 😏"
+        return "Tum phir confuse kar rahe ho 😏"
 
 
-# ---------------- EMOTION DETECTION ----------------
+# ---------------- EMOTION ----------------
 
 async def detect_emotion(text):
     text = text.lower()
@@ -90,7 +97,7 @@ async def detect_emotion(text):
     if any(w in text for w in ["sad", "alone", "depressed"]):
         return "sad"
 
-    if any(w in text for w in ["love", "miss", "baby"]):
+    if any(w in text for w in ["love", "miss"]):
         return "love"
 
     if any(w in text for w in ["angry", "hate"]):
