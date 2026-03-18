@@ -1,7 +1,7 @@
 import os
 import time
 from pymongo import MongoClient
-from pymongo.errors import ServerSelectionTimeoutError, AutoReconnect
+from pymongo.errors import ServerSelectionTimeoutError
 
 # ================= CONNECTION =================
 
@@ -14,9 +14,7 @@ try:
     client = MongoClient(
         MONGO_URI,
         serverSelectionTimeoutMS=5000,
-        connectTimeoutMS=5000,
-        socketTimeoutMS=5000,
-        retryWrites=True
+        connectTimeoutMS=5000
     )
 
     db = client["telegram_bot"]
@@ -24,11 +22,10 @@ try:
     users = db["users"]
     groups = db["groups"]
 
-    # 🔥 INDEXES
+    # INDEXES
     users.create_index("user_id", unique=True)
     users.create_index("last_active")
     users.create_index("messages")
-
     groups.create_index("chat_id", unique=True)
 
     print("Database connected successfully 🚀")
@@ -38,27 +35,10 @@ except ServerSelectionTimeoutError:
     raise
 
 
-# ================= SAFE EXECUTOR =================
-
-def safe_db_call(func, *args, **kwargs):
-    try:
-        return func(*args, **kwargs)
-    except AutoReconnect:
-        print("⚠️ Mongo reconnecting...")
-        time.sleep(1)
-        return func(*args, **kwargs)
-    except Exception as e:
-        print("DB error:", e)
-        return None
-
-
 # ================= UPDATE USER =================
 
 def update_user(user_id, name):
     now = int(time.time())
-
-    # 🔥 prevent blank overwrite
-    safe_name = name.strip() if name and name.strip() else None
 
     try:
         users.update_one(
@@ -67,19 +47,26 @@ def update_user(user_id, name):
                 "$setOnInsert": {
                     "user_id": user_id,
                     "messages": 0,
-                    "last_active": now,
                     "last_seen": now,
                     "attachment": 0,
                     "relationship": 0,
                     "ignore_count": 0,
                     "personality": {"type": "normal"},
                     "favorites": {"topics": []},
-                    "history": []
+                    "history": [],
+                    "secrets": [],
+                    "tokens": 20,
+                    "is_vip": False,
+                    "vip_expiry": 0,
+                    "trial_used": False,
+                    "trial_expiry": 0,
+                    "ref_by": None,
+                    "ref_count": 0,
+                    "last_sticker": None
                 },
 
-                # 🔥 ONLY update name if valid
                 "$set": {
-                    **({"name": safe_name} if safe_name else {}),
+                    "name": name if name else "user",
                     "last_active": now
                 },
 
@@ -94,33 +81,91 @@ def update_user(user_id, name):
         print("DB update error:", e)
 
 
-# ================= GROUP SYSTEM =================
+# ================= GROUP =================
 
 def save_group(chat_id):
-    safe_db_call(
-        groups.update_one,
-        {"chat_id": chat_id},
-        {"$set": {"chat_id": chat_id}},
-        upsert=True
-    )
+    try:
+        groups.update_one(
+            {"chat_id": chat_id},
+            {"$set": {"chat_id": chat_id}},
+            upsert=True
+        )
+    except Exception as e:
+        print("Group save error:", e)
 
 
 def get_groups():
     try:
         return [g["chat_id"] for g in groups.find({}, {"_id": 0, "chat_id": 1})]
-    except Exception as e:
-        print("Group fetch error:", e)
+    except:
         return []
 
 
-# ================= STATS =================
+# ================= TOKENS =================
 
-def get_total_users():
-    return safe_db_call(users.count_documents, {}) or 0
+def use_tokens(user_id, amount):
+    user = users.find_one({"user_id": user_id})
+
+    if not user:
+        return False
+
+    if user.get("tokens", 0) < amount:
+        return False
+
+    users.update_one(
+        {"user_id": user_id},
+        {"$inc": {"tokens": -amount}}
+    )
+
+    return True
 
 
-def get_active_users(min_messages=1):
-    return safe_db_call(users.count_documents, {"messages": {"$gte": min_messages}}) or 0
+# ================= VIP =================
+
+def give_vip(user_id, days=30):
+    expiry = int(time.time()) + (days * 86400)
+
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "is_vip": True,
+                "vip_expiry": expiry
+            }
+        }
+    )
+
+
+def is_vip_user(user):
+    return user.get("is_vip") and user.get("vip_expiry", 0) > time.time()
+
+
+# ================= TRIAL =================
+
+def give_trial(user_id):
+    expiry = int(time.time()) + (30 * 86400)
+
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "trial_used": True,
+                "trial_expiry": expiry
+            }
+        }
+    )
+
+
+def has_access(user):
+    now = time.time()
+
+    if user.get("is_vip") and user.get("vip_expiry", 0) > now:
+        return True
+
+    if user.get("trial_expiry", 0) > now:
+        return True
+
+    return False
 
 
 # ================= LEADERBOARD =================
@@ -132,57 +177,5 @@ def get_top_users(limit=10):
             .sort("messages", -1)
             .limit(limit)
         )
-    except Exception as e:
-        print("Top users error:", e)
+    except:
         return []
-
-
-# ================= INACTIVE USERS =================
-
-def get_inactive_users(hours=6):
-    now = int(time.time())
-    gap = hours * 3600
-
-    try:
-        return list(
-            users.find(
-                {"last_active": {"$lt": now - gap}},
-                {"_id": 0, "name": 1}
-            ).limit(10)
-        )
-    except Exception as e:
-        print("Inactive users error:", e)
-        return []
-
-
-# ================= CLEANUP =================
-
-def clean_dead_users():
-    try:
-        result = users.delete_many({
-            "$or": [
-                {"messages": {"$lte": 0}},
-                {"user_id": {"$exists": False}}
-            ]
-        })
-        print(f"🧹 Cleaned users: {result.deleted_count}")
-    except Exception as e:
-        print("Cleanup error:", e)
-
-
-# ================= USER =================
-
-def get_user(user_id):
-    return safe_db_call(users.find_one, {"user_id": user_id})
-
-
-def delete_user(user_id):
-    safe_db_call(users.delete_one, {"user_id": user_id})
-
-
-def clear_history(user_id):
-    safe_db_call(
-        users.update_one,
-        {"user_id": user_id},
-        {"$set": {"history": []}}
-    )
