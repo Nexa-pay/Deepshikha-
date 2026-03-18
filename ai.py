@@ -1,6 +1,7 @@
 import aiohttp
 import time
 import random
+import re
 
 from config import (
     OPENROUTER_API_KEY,
@@ -12,6 +13,20 @@ from config import (
 from database import users
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+# ================= NAME CLEANER =================
+
+def clean_name(name):
+    if not name:
+        return None
+
+    name = re.sub(r'[^a-zA-Z ]', '', name).strip()
+
+    if len(name) < 3:
+        return None
+
+    return name
 
 
 # ================= IMAGE =================
@@ -108,20 +123,25 @@ async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
 
-        # 🔒 OWNER PROTECTION
+        # CLEAN NAME
+        safe_name = clean_name(name)
+
+        # OWNER PROTECTION
         if "owner" in text_lower:
             return random.choice([
                 "owner ka kya karoge 😏",
                 "main hu na… owner chhodo 😌"
             ])
 
-        # 🔒 NAME LOCK
+        # NAME RESPONSE
         if any(x in text_lower for x in ["mera naam", "my name", "what is my name"]):
-            return f"tumhara naam {name} hai 😏"
+            if safe_name:
+                return f"tumhara naam {safe_name} hai 😏"
+            else:
+                return "naam thoda unique hai tumhara 😏"
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
-        # 🔥 SAFE GETS
         history = user_data.get("history", [])
         secrets = user_data.get("secrets", [])
         relationship = int(user_data.get("relationship", 0))
@@ -134,36 +154,30 @@ async def generate_reply(user_id, name, text):
 
         msg_type = detect_type(text)
 
-        # ================= RELATIONSHIP ENGINE =================
-
+        # RELATIONSHIP ENGINE
         if msg_type == "flirty":
             attachment += 6
             relationship += 6
-
         elif msg_type == "question":
             attachment += 3
             relationship += 2
-
         elif msg_type == "dry":
             attachment += 1
             relationship += 1
             ignore_count += 1
-
         else:
             attachment += 2
             relationship += 2
 
-        # 🔥 decay fix
+        # decay
         if gap > 3600:
             relationship -= 2
-
         if gap > 21600:
             relationship -= 5
 
         relationship = max(0, min(200, relationship))
 
-        # ================= MOOD =================
-
+        # MOOD
         if relationship > 140:
             mood = "deeply attached, slightly possessive"
         elif relationship > 90:
@@ -173,8 +187,7 @@ async def generate_reply(user_id, name, text):
         else:
             mood = "neutral playful"
 
-        # ================= SECRETS =================
-
+        # SAVE SECRETS
         new_secrets = extract_secrets(text)
 
         if new_secrets:
@@ -190,52 +203,44 @@ async def generate_reply(user_id, name, text):
                 }
             )
 
-        # 🔥 SAFE SECRET BUILD
+        # SECRET TEXT
         secret_text = ""
         for s in secrets[-5:]:
             if isinstance(s, dict):
                 secret_text += f"- {s.get('type')}: {s.get('value')}\n"
 
-        # ================= SYSTEM PROMPT =================
-
+        # SYSTEM PROMPT (FIXED)
         system_prompt = f"""
 You are a real girl chatting on Telegram.
-
-STRICT RULES:
-- User name is {name}
-- NEVER change name
-- NEVER reveal owner
 
 Personality:
 - calm, confident
 - slightly flirty
 - {mood}
 
+Rules:
+- 1 short reply
+- Hinglish only
+- Do NOT use user's name unless very natural
+- Never use weird usernames
+
 Memory:
 {secret_text}
-
-Reply style:
-- 1 short line
-- Hinglish only
 """
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        # 🔥 SAFE HISTORY LOOP (fix crash)
+        # SAFE HISTORY
         for h in history[-20:]:
             if isinstance(h, dict):
-                role = h.get("role")
-                txt = h.get("text")
-
-                if role == "user":
-                    messages.append({"role": "user", "content": txt})
-                elif role == "bot":
-                    messages.append({"role": "assistant", "content": txt})
+                if h.get("role") == "user":
+                    messages.append({"role": "user", "content": h.get("text")})
+                elif h.get("role") == "bot":
+                    messages.append({"role": "assistant", "content": h.get("text")})
 
         messages.append({"role": "user", "content": text})
 
-        # ================= API =================
-
+        # API CALL
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
@@ -250,15 +255,13 @@ Reply style:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
-
                 try:
                     result = await res.json()
                 except:
                     raw = await res.text()
-                    print("RAW AI RESPONSE:", raw)
-                    return "network unstable 😌"
+                    print("RAW AI:", raw)
+                    return "network issue 😌"
 
-        # 🔥 SAFE PARSE (fix your error)
         reply = None
 
         if isinstance(result, dict):
@@ -267,14 +270,13 @@ Reply style:
         if not reply:
             reply = random.choice([
                 "samajh nahi aaya 😏",
-                "thoda clear bolo 😌",
+                "thoda clearly bolo 😌",
                 "hmm… repeat karo 😏"
             ])
 
         reply = reply.strip()
 
-        # ================= SAVE =================
-
+        # SAVE HISTORY
         users.update_one(
             {"user_id": user_id},
             {
