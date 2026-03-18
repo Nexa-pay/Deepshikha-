@@ -30,6 +30,29 @@ def get_random_image():
     return random.choice(IMAGE_URLS)
 
 
+# ================= REPLY → MOOD (🔥 IMPORTANT) =================
+
+def detect_reply_mood(reply):
+    r = reply.lower()
+
+    if any(x in r for x in ["miss", "love", "jaan"]):
+        return "love"
+
+    if any(x in r for x in ["sad", "alone", "hurt"]):
+        return "cry"
+
+    if any(x in r for x in ["kiss"]):
+        return "kiss"
+
+    if any(x in r for x in ["angry", "irritating"]):
+        return "angry"
+
+    if any(x in r for x in ["haha", "lol"]):
+        return "cute"
+
+    return "cute"
+
+
 # ================= MESSAGE TYPE =================
 
 def detect_type(text):
@@ -130,7 +153,7 @@ async def generate_reply(user_id, name, text):
         # ================= COMEBACK =================
 
         if gap > 86400:
-            comeback = "you noticed they were gone and slightly missed them"
+            comeback = "you noticed they were gone and missed them slightly"
         elif gap > 21600:
             comeback = "you noticed absence, slight attitude"
         elif gap > 3600:
@@ -143,37 +166,35 @@ async def generate_reply(user_id, name, text):
         possessive_hint = ""
 
         if relationship > 80 and msg_type == "flirty":
-            possessive_hint = "use slight possessive teasing tone"
+            possessive_hint = "slight possessive teasing tone"
         elif ignore_count > 5:
-            possessive_hint = "you feel ignored, show mild attitude"
-
-        # ================= USER PROFILE =================
-
-        user_type = personality_data.get("type", "normal")
-        fav_topics = ", ".join(fav_data.get("topics", []))
+            possessive_hint = "feels ignored, mild attitude"
 
         # ================= SYSTEM PROMPT =================
 
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-RULES:
-- Reply based on user's message
-- Keep reply SHORT (1 line)
+- Reply SHORT (1 line)
 - Hinglish only
 - Natural human tone
 
-PERSONALITY:
+Personality:
 - calm, confident
-- slightly flirty when needed
+- slightly flirty
 - {mood}
 
-USER PROFILE:
-- {user_type}
-- {fav_topics}
+User:
+- {personality_data.get("type","normal")}
+- {", ".join(fav_data.get("topics", []))}
 
-COMEBACK: {comeback}
-POSSESSIVE: {possessive_hint}
+Behavior:
+- remember chats
+- react to absence
+- stay smooth
+
+Comeback: {comeback}
+Tone: {possessive_hint}
 """
 
         # ================= BUILD HISTORY =================
