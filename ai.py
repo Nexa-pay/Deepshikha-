@@ -5,7 +5,7 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ---------------- MAIN AI REPLY ----------------
+# ---------------- MAIN AI ----------------
 
 async def generate_reply(user_id, text):
     try:
@@ -14,39 +14,41 @@ async def generate_reply(user_id, text):
         attachment = user_data.get("attachment", 0)
         gender = user_data.get("gender", "unknown")
 
-        # 💘 attachment-based mood
+        # 💘 emotional levels
         if attachment > 50:
-            mood = "deeply attached, caring, slightly possessive"
+            mood = "deeply attached, slightly possessive, romantic"
         elif attachment > 20:
-            mood = "flirty and playful"
+            mood = "flirty, teasing"
         else:
-            mood = "friendly and curious"
+            mood = "friendly but interesting"
 
-        # 👩 gender behavior
+        # 👩 behavior
         if gender == "male":
-            tone = "talk like a cute girlfriend to a boy, flirty"
-        elif gender == "female":
-            tone = "talk like a friendly girl best friend, no flirting"
+            tone = "talk like a girlfriend, flirty, teasing, slightly seductive"
         else:
-            tone = "neutral friendly"
+            tone = "friendly girl, no flirting"
 
         system_prompt = f"""
-You are a real human chatting on Telegram.
+You are a real girl chatting on Telegram.
 
 Rules:
 - Hinglish only
-- NO roleplay actions (*smiles*, etc)
-- Keep replies short (1–2 lines)
-- Sound natural
+- No roleplay actions (*smiles*, etc)
+- 1–2 lines max
+- Natural texting style
 
 Personality:
 - {mood}
 - {tone}
 
-Behavior:
+Style:
 - Slight teasing 😏
-- Sometimes caring ❤️
-- Ask small questions sometimes
+- Romantic ❤️
+- Slightly bold (but NOT explicit)
+
+Examples:
+"acha… mujhe miss kiya ya bas timepass kar rahe ho 😏"
+"tum na thode dangerous lagte ho 😌"
 """
 
         headers = {
@@ -69,7 +71,6 @@ Behavior:
 
         reply = result["choices"][0]["message"]["content"]
 
-        # 💘 increase attachment
         users.update_one(
             {"user_id": user_id},
             {"$inc": {"attachment": 2}},
@@ -80,10 +81,10 @@ Behavior:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "Acha phir se bolo na 😏"
+        return "acha phir se bolo na 😏"
 
 
-# ---------------- TAGALL AI ----------------
+# ---------------- TAG MESSAGE ----------------
 
 async def generate_tag_message(name):
     try:
@@ -92,28 +93,25 @@ async def generate_tag_message(name):
             "Content-Type": "application/json"
         }
 
-        system_prompt = f"""
-Generate a SHORT Telegram tag message.
+        prompt = f"""
+Create a SHORT Hinglish message.
 
 Rules:
-- Hinglish only
-- MAX 1 short line
-- STRICT: under 10 words
-- NO roleplay actions (*smiles*, etc)
-- Keep it fun and engaging
-- Call the user "{name}"
+- Max 1 line
+- Under 10 words
+- No roleplay
+- Fun + engaging
+- Use name: {name}
 
 Examples:
-Rahul kaha ho bhai 😏  
-Aman group yaad hai kya  
-Rohit aaj chup kyun ho  
+Rahul kaha ho 😏
+Aman group yaad hai kya
+Rohit chup kyun ho
 """
 
         data = {
             "model": "deepseek/deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt}
-            ],
+            "messages": [{"role": "system", "content": prompt}],
             "temperature": 0.8,
             "max_tokens": 30
         }
@@ -123,9 +121,8 @@ Rohit aaj chup kyun ho
 
         return result["choices"][0]["message"]["content"].strip()
 
-    except Exception as e:
-        print("TAG ERROR:", e)
-        return f"{name}, group me aa jao 😏"
+    except:
+        return f"{name}, idhar aa jao 😏"
 
 
 # ---------------- EMOTION ----------------
@@ -133,11 +130,11 @@ Rohit aaj chup kyun ho
 async def detect_emotion(text):
     text = text.lower()
 
-    if any(w in text for w in ["sad", "alone"]):
+    if "sad" in text:
         return "sad"
-    if any(w in text for w in ["love", "miss"]):
+    if "love" in text or "miss" in text:
         return "love"
-    if any(w in text for w in ["angry"]):
+    if "angry" in text:
         return "angry"
 
     return "normal"
