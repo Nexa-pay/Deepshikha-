@@ -117,13 +117,38 @@ def extract_secrets(text):
         return []
 
 
+# ================= CLEAN REPLY =================
+
+def clean_reply(reply):
+    # ❌ remove roleplay (*smiles*)
+    reply = re.sub(r"\*.*?\*", "", reply)
+
+    # remove weird spacing
+    reply = re.sub(r"\s+", " ", reply).strip()
+
+    return reply
+
+
+# ================= FORCE SHORT =================
+
+def force_short_reply(reply):
+    words = reply.split()
+
+    if len(words) > 12:
+        return random.choice([
+            "itna long kyun bol rahe ho 😏",
+            "short me bolo na 😌",
+            "seedha point pe aao 😏"
+        ])
+
+    return reply
+
+
 # ================= MAIN AI =================
 
 async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
-
-        # CLEAN NAME
         safe_name = clean_name(name)
 
         # OWNER PROTECTION
@@ -137,8 +162,7 @@ async def generate_reply(user_id, name, text):
         if any(x in text_lower for x in ["mera naam", "my name", "what is my name"]):
             if safe_name:
                 return f"tumhara naam {safe_name} hai 😏"
-            else:
-                return "naam thoda unique hai tumhara 😏"
+            return "naam thoda unique hai tumhara 😏"
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
@@ -169,7 +193,6 @@ async def generate_reply(user_id, name, text):
             attachment += 2
             relationship += 2
 
-        # decay
         if gap > 3600:
             relationship -= 2
         if gap > 21600:
@@ -179,13 +202,13 @@ async def generate_reply(user_id, name, text):
 
         # MOOD
         if relationship > 140:
-            mood = "deeply attached, slightly possessive"
+            mood = "deeply attached"
         elif relationship > 90:
-            mood = "flirty and warm"
+            mood = "flirty"
         elif relationship > 50:
-            mood = "friendly teasing"
+            mood = "friendly"
         else:
-            mood = "neutral playful"
+            mood = "neutral"
 
         # SAVE SECRETS
         new_secrets = extract_secrets(text)
@@ -193,36 +216,34 @@ async def generate_reply(user_id, name, text):
         if new_secrets:
             users.update_one(
                 {"user_id": user_id},
-                {
-                    "$push": {
-                        "secrets": {
-                            "$each": new_secrets,
-                            "$slice": -20
-                        }
-                    }
-                }
+                {"$push": {"secrets": {"$each": new_secrets, "$slice": -20}}}
             )
 
         # SECRET TEXT
         secret_text = ""
         for s in secrets[-5:]:
             if isinstance(s, dict):
-                secret_text += f"- {s.get('type')}: {s.get('value')}\n"
+                secret_text += f"- {s.get('value')}\n"
 
-        # SYSTEM PROMPT (FIXED)
+        # SYSTEM PROMPT (STRICT)
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-Personality:
-- calm, confident
-- slightly flirty
-- {mood}
+Tone: {mood}
 
-Rules:
-- 1 short reply
+STRICT RULES:
+- Only 1 short line reply
+- Max 8-10 words
 - Hinglish only
-- Do NOT use user's name unless very natural
-- Never use weird usernames
+- No roleplay actions (*)
+- No long text
+- No paragraphs
+- Do not use user's name unless needed
+
+Examples:
+- Kya hua? Itne chup kyun ho 😏
+- Mujhe ignore kar rahe ho kya 😒
+- Aaj mood off lag raha hai 😌
 
 Memory:
 {secret_text}
@@ -230,7 +251,6 @@ Memory:
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        # SAFE HISTORY
         for h in history[-20:]:
             if isinstance(h, dict):
                 if h.get("role") == "user":
@@ -258,8 +278,6 @@ Memory:
                 try:
                     result = await res.json()
                 except:
-                    raw = await res.text()
-                    print("RAW AI:", raw)
                     return "network issue 😌"
 
         reply = None
@@ -268,13 +286,11 @@ Memory:
             reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            reply = random.choice([
-                "samajh nahi aaya 😏",
-                "thoda clearly bolo 😌",
-                "hmm… repeat karo 😏"
-            ])
+            reply = "samajh nahi aaya 😏"
 
-        reply = reply.strip()
+        # CLEAN + SHORT
+        reply = clean_reply(reply)
+        reply = force_short_reply(reply)
 
         # SAVE HISTORY
         users.update_one(
@@ -303,4 +319,4 @@ Memory:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "network thoda slow hai… phir bolo 😌"
+        return "network slow hai 😌"
