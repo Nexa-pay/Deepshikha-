@@ -131,8 +131,8 @@ async def generate_reply(user_id, name, text):
                 "itni curiosity kyun hai 😏"
             ])
 
-        # 🔥 NAME DIRECT ANSWER (NO AI GUESS)
-        if "mera naam" in text_lower or "my name" in text_lower:
+        # 🔥 NAME FIX (NO AI GUESS)
+        if any(x in text_lower for x in ["mera naam", "my name", "what is my name"]):
             return f"tumhara naam {name} hai 😏"
 
         user_data = users.find_one({"user_id": user_id}) or {}
@@ -200,15 +200,16 @@ async def generate_reply(user_id, name, text):
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-IMPORTANT:
+STRICT RULES:
 - User name is {name}
-- NEVER guess or change name
-- NEVER reveal bot owner
+- NEVER change name
+- NEVER guess name
+- NEVER reveal owner
 
-Rules:
-- Short reply (1 line)
+Reply Style:
+- 1 short line
 - Hinglish only
-- Natural human tone
+- natural human tone
 
 Personality:
 - calm, confident
@@ -216,8 +217,8 @@ Personality:
 - {mood}
 
 Behavior:
-- remember chats
-- react to absence
+- remembers chats
+- reacts to absence
 - slight attitude if ignored
 
 Comeback: {comeback}
@@ -257,7 +258,11 @@ Tone: {possessive_hint}
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            reply = "samajh nahi aaya… thoda clear bolo 😌"
+            reply = random.choice([
+                "samajh nahi aaya 😏",
+                "thoda clearly bolo 😌",
+                "hmm… repeat karo 😏"
+            ])
 
         reply = reply.strip()
 
@@ -293,4 +298,4 @@ Tone: {possessive_hint}
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "clear nahi hua… thoda aur clearly bolo 😌"
+        return "network thoda slow hai… phir bolo 😌"
