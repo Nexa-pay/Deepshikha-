@@ -17,26 +17,24 @@ from ai import generate_reply, generate_tag_message
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = 123456789  # ⚠️ replace with your Telegram ID
+OWNER_ID = 123456789  # replace with your ID
 
 
 # ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "hii 😚 main aa gayi… miss kiya kya? 😏"
-    )
+    await update.message.reply_text("hii… finally aaye tum 😏")
 
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("bot active hai baby 😌")
+    await update.message.reply_text("bot active hai 😌")
 
 
 # ================= TAG ALL =================
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type not in ["group", "supergroup"]:
-        return await update.message.reply_text("❌ group me use karo")
+        return await update.message.reply_text("group me use karo")
 
     members = context.application.bot_data.get("members", [])
 
@@ -45,7 +43,7 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "📢 suno sab:\n\n"
 
-    for user in members[:10]:  # limit 10 users
+    for user in members[:10]:
         name = user["name"]
         ai_msg = await generate_tag_message(name)
         msg += f"{name} — {ai_msg}\n"
@@ -59,9 +57,9 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = get_top_users()
 
     if not top_users:
-        return await update.message.reply_text("abhi koi active nahi hai 😴")
+        return await update.message.reply_text("abhi koi active nahi hai")
 
-    text = "🏆 top active log:\n\n"
+    text = "🏆 active users:\n\n"
 
     for i, user in enumerate(top_users, start=1):
         text += f"{i}. {user['name']} — {user.get('messages', 0)} 🔥\n"
@@ -73,7 +71,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def database(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = len(get_top_users(1000))
-    await update.message.reply_text(f"📊 total users: {total}")
+    await update.message.reply_text(f"total users: {total}")
 
 
 # ================= REVIVE =================
@@ -86,7 +84,7 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     names = [u["name"] for u in inactive[:5]]
 
-    msg = f"{', '.join(names)} kaha gayab ho gaye sab 😏"
+    msg = f"{', '.join(names)} kaha gayab ho gaye 😏"
 
     await update.message.reply_text(msg)
 
@@ -107,7 +105,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("broadcast done 😌")
+    await update.message.reply_text("done 😌")
 
 
 # ================= AI MESSAGE =================
@@ -124,30 +122,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username.lower()
     is_reply = update.message.reply_to_message
 
-    # ✅ Save group
+    # ================= SAVE GROUP =================
     chat_id = update.message.chat_id
     groups = context.application.bot_data.setdefault("groups", [])
     if chat_id not in groups:
         groups.append(chat_id)
 
-    # ✅ Save members for tagall
+    # ================= SAVE MEMBERS =================
     members = context.application.bot_data.setdefault("members", [])
     if not any(u["id"] == user.id for u in members):
         members.append({"id": user.id, "name": name})
 
-    # ✅ Save user to DB
+    # ================= SAVE USER =================
     update_user(user.id, name)
 
-    # ✅ Smart trigger (ANTI-SPAM)
-    if chat_type in ["group", "supergroup"]:
-        if (
-            f"@{bot_username}" not in text.lower()
-            and "@admin" not in text.lower()
-            and not is_reply
-        ):
-            return
+    # ================= SMART TRIGGER =================
+    triggered = False
 
-    # 💅 REAL AI RESPONSE (DeepSeek)
+    if chat_type == "private":
+        triggered = True
+    elif f"@{bot_username}" in text.lower():
+        triggered = True
+    elif is_reply and is_reply.from_user.id == context.bot.id:
+        triggered = True
+    elif "@admin" in text.lower():
+        triggered = True
+
+    if not triggered:
+        return
+
+    # ================= AI RESPONSE =================
     reply = await generate_reply(user.id, name, text)
 
     await update.message.reply_text(reply)
@@ -159,9 +163,9 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     groups = context.application.bot_data.get("groups", [])
 
     msgs = [
-        "group itna silent kyu hai 😴",
-        "koi baat karega ya main hi start karu? 😏",
-        "ignore kar rahe ho ya busy ho sab 😌",
+        "itna silent kyu hai group",
+        "koi interesting baat karega ya sab busy hai",
+        "dead ho gaya kya yaha 😏",
     ]
 
     for chat_id in groups:
