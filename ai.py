@@ -106,11 +106,11 @@ async def generate_reply(user_id, name, text):
         # ================= COMEBACK =================
 
         if gap > 86400:
-            comeback = "user came after long time, react like you noticed"
+            comeback = "react like you noticed they were gone and missed slightly"
         elif gap > 21600:
-            comeback = "user was inactive, slight attitude"
+            comeback = "slight attitude, noticed absence"
         elif gap > 3600:
-            comeback = "user was away, soft tone"
+            comeback = "soft warm tone"
         else:
             comeback = "normal flow"
 
@@ -119,11 +119,11 @@ async def generate_reply(user_id, name, text):
         possessive_hint = ""
 
         if relationship > 80 and msg_type == "flirty":
-            possessive_hint = "slight possessive teasing"
+            possessive_hint = "add slight possessive teasing tone"
         elif ignore_count > 5:
-            possessive_hint = "feels ignored, slight attitude"
+            possessive_hint = "feels ignored, show mild attitude"
 
-        # ================= MEMORY =================
+        # ================= USER PROFILE =================
 
         user_type = personality_data.get("type", "normal")
         fav_topics = ", ".join(fav_data.get("topics", []))
@@ -135,9 +135,25 @@ You are a real girl chatting on Telegram.
 
 RULES:
 - Reply ONLY based on user's message
-- Continue conversation naturally (very important)
+- Continue conversation naturally (VERY IMPORTANT)
 - Keep reply SHORT (1 line)
 - Hinglish only
+
+STRICT RULES:
+- NEVER be rude or abusive
+- NEVER insult the user
+- NEVER use words like: bakwas, abe, pagal
+- Stay soft, calm, slightly flirty
+
+CONFUSION HANDLING:
+- If message is unclear:
+  → reply playfully, slightly flirty
+  → never aggressive
+
+Examples:
+- "samajh nahi aaya… kya bol rahe ho 😏"
+- "itna confusing kyu bolte ho tum 😌"
+- "seedha bol na… kya chahiye 😏"
 
 PERSONALITY:
 - calm, confident
@@ -167,11 +183,11 @@ IMPORTANT:
 - No unnecessary humor
 """
 
-        # ================= BUILD CHAT HISTORY =================
+        # ================= BUILD HISTORY =================
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-10:]:
+        for h in history[-12:]:
             if h.startswith("User:"):
                 messages.append({
                     "role": "user",
@@ -195,7 +211,7 @@ IMPORTANT:
         data = {
             "model": "deepseek/deepseek-chat",
             "messages": messages,
-            "temperature": 0.6,
+            "temperature": 0.65,
             "max_tokens": 80
         }
 
@@ -206,7 +222,7 @@ IMPORTANT:
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            return "samajh nahi aaya… phir bolo"
+            return "samajh nahi aaya… thoda clear bolo 😌"
 
         reply = reply.strip()
 
@@ -242,7 +258,7 @@ IMPORTANT:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "clear nahi hua… phir bolo"
+        return "clear nahi hua… thoda aur clearly bolo 😌"
 
 
 # ================= TAGALL =================
