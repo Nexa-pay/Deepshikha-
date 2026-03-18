@@ -1,24 +1,33 @@
-from pymongo import MongoClient
 import os
+from pymongo import MongoClient
 
-# ---------------- MONGODB CONNECTION ----------------
-
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI")
 
 client = MongoClient(MONGO_URI)
-
 db = client["telegram_bot"]
 
-# ---------------- COLLECTIONS ----------------
-
-users = db["users"]        # store users
-groups = db["groups"]      # store group chats
-tokens = db["tokens"]      # for paid system (future ready)
-
-# ---------------- INDEXES (PERFORMANCE BOOST) ----------------
-
-users.create_index("user_id", unique=True)
-groups.create_index("chat_id", unique=True)
-tokens.create_index("user_id")
+users = db["users"]
 
 print("Database connected successfully 🚀")
+
+
+# ✅ Add or update user
+def update_user(user_id, name):
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {"name": name},
+            "$inc": {"messages": 1}
+        },
+        upsert=True
+    )
+
+
+# ✅ Get top active users
+def get_top_users(limit=5):
+    return list(users.find().sort("messages", -1).limit(limit))
+
+
+# ✅ Get inactive users
+def get_inactive_users(limit=3):
+    return list(users.find().sort("messages", 1).limit(limit))
