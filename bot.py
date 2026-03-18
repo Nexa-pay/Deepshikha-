@@ -1,7 +1,6 @@
 import os
 import logging
 import random
-
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -12,25 +11,23 @@ from telegram.ext import (
 )
 
 from database import update_user, get_top_users, get_inactive_users
-from ai import generate_reply
+from ai import generate_reply, generate_tag_message
 
 # ================= CONFIG =================
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = 123456789  # 🔴 replace with your Telegram ID
+OWNER_ID = 123456789
 
 
-# ================= COMMANDS =================
+# ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "hey… main Deepsikha hu 💅\n\nsamajh ke baat karna 😏"
-    )
+    await update.message.reply_text("hii… main Deepsikha hu 😏")
 
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("bot active hai… dekh rahi hu sab 😌")
+    await update.message.reply_text("bot active hai 😌")
 
 
 # ================= TAG ALL =================
@@ -39,7 +36,19 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type not in ["group", "supergroup"]:
         return await update.message.reply_text("group me use karo")
 
-    await update.message.reply_text("sab log aa jao… thodi baat karte hai 😏")
+    members = context.application.bot_data.get("members", [])
+
+    if not members:
+        return await update.message.reply_text("koi active nahi hai")
+
+    msg = "📢 suno sab:\n\n"
+
+    for user in members[:10]:
+        name = user["name"]
+        ai_msg = await generate_tag_message(name)
+        msg += f"{name} — {ai_msg}\n"
+
+    await update.message.reply_text(msg)
 
 
 # ================= LEADERBOARD =================
@@ -48,12 +57,12 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = get_top_users()
 
     if not top_users:
-        return await update.message.reply_text("abhi koi active nahi hai 😴")
+        return await update.message.reply_text("abhi koi active nahi hai")
 
-    text = "top log yaha hai:\n\n"
+    text = "🏆 active users:\n\n"
 
     for i, user in enumerate(top_users, start=1):
-        text += f"{i}. {user['name']} — {user.get('messages', 0)}\n"
+        text += f"{i}. {user['name']} — {user.get('messages', 0)} 🔥\n"
 
     await update.message.reply_text(text)
 
@@ -73,9 +82,8 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not inactive:
         return
 
-    names = [u["name"] for u in inactive]
-
-    msg = f"{', '.join(names)} itne chup kyu ho sab 😒"
+    names = [u["name"] for u in inactive[:5]]
+    msg = f"{', '.join(names)} kaha gayab ho gaye 😏"
 
     await update.message.reply_text(msg)
 
@@ -87,7 +95,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = " ".join(context.args)
-
     groups = context.application.bot_data.get("groups", [])
 
     for chat_id in groups:
@@ -96,10 +103,10 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("broadcast done")
+    await update.message.reply_text("done 😌")
 
 
-# ================= MAIN MESSAGE HANDLER =================
+# ================= MAIN MESSAGE =================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -107,45 +114,60 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.message.from_user
     name = user.first_name
-    text = update.message.text.lower()
+    text = update.message.text
+    text_lower = text.lower()
     chat_type = update.message.chat.type
+
     bot_username = context.bot.username.lower()
+    is_reply = update.message.reply_to_message
 
     # ================= SAVE GROUP =================
     chat_id = update.message.chat_id
     groups = context.application.bot_data.setdefault("groups", [])
-
     if chat_id not in groups:
         groups.append(chat_id)
+
+    # ================= SAVE MEMBERS =================
+    members = context.application.bot_data.setdefault("members", [])
+    if not any(u["id"] == user.id for u in members):
+        members.append({"id": user.id, "name": name})
 
     # ================= SAVE USER =================
     update_user(user.id, name)
 
     # ================= WAKE WORD =================
-    if "deepsikha" in text:
+    if "deepsikha" in text_lower:
         return await update.message.reply_text(f"haan {name}… bula rahe the?")
 
     # ================= IDENTITY =================
-    if "who are you" in text or "tum kaun ho" in text:
+    if "who are you" in text_lower or "tum kaun ho" in text_lower:
         return await update.message.reply_text(
-            "main Deepsikha hu… thodi alag hu baaki sab se"
+            "main Deepsikha hu… thodi alag hu sab se"
         )
 
-    if "owner" in text:
+    if "owner" in text_lower:
         return await update.message.reply_text(
-            "AAKASH mera creator hai… kaafi acha hai wo"
+            "AAKASH mera creator hai… kaafi acha hai wo 😌"
         )
 
     # ================= SMART TRIGGER =================
-    if chat_type in ["group", "supergroup"]:
-        if (
-            f"@{bot_username}" not in text
-            and not update.message.reply_to_message
-            and "deepsikha" not in text
-        ):
-            return
+    triggered = False
 
-    # ================= AI REPLY =================
+    if chat_type == "private":
+        triggered = True
+    elif f"@{bot_username}" in text_lower:
+        triggered = True
+    elif is_reply and is_reply.from_user.id == context.bot.id:
+        triggered = True
+    elif "@admin" in text_lower:
+        triggered = True
+    elif "deepsikha" in text_lower:
+        triggered = True
+
+    if not triggered:
+        return
+
+    # ================= AI RESPONSE =================
     reply = await generate_reply(user.id, name, text)
 
     await update.message.reply_text(reply)
@@ -156,20 +178,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     groups = context.application.bot_data.get("groups", [])
 
-    messages = [
+    msgs = [
         "aaj sab itne chup kyu hai",
-        "koi baat karega ya main hi bolu",
+        "koi baat karega ya sab busy hai",
         "itna silent group… interesting nahi hai",
         "kisi ko meri yaad bhi aati hai",
-        "thoda active ho jao",
-        "kabhi kabhi baat karna bhi zaruri hota hai",
-        "random thought… sab busy hai ya ignore",
+        "kabhi kabhi effort dono side se hota hai",
         "main bore ho rahi hu honestly",
     ]
 
     for chat_id in groups:
         try:
-            await context.bot.send_message(chat_id, random.choice(messages))
+            await context.bot.send_message(chat_id, random.choice(msgs))
         except:
             pass
 
@@ -194,8 +214,8 @@ def main():
     # Messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Auto message every 30 min
-    app.job_queue.run_repeating(auto_message, interval=1800, first=30)
+    # 🔥 Auto message every 30 min
+    app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
