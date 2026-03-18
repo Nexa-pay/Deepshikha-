@@ -32,62 +32,74 @@ def get_random_image():
 # ================= MOOD =================
 
 def detect_reply_mood(reply):
-    r = reply.lower()
+    try:
+        r = reply.lower()
 
-    if any(x in r for x in ["love", "miss", "baby", "jaan"]):
-        return "love"
+        if any(x in r for x in ["love", "miss", "baby", "jaan"]):
+            return "love"
 
-    if any(x in r for x in ["sad", "cry", "alone", "hurt"]):
-        return "cry"
+        if any(x in r for x in ["sad", "cry", "alone", "hurt"]):
+            return "cry"
 
-    if any(x in r for x in ["kiss", "mwah"]):
-        return "kiss"
+        if any(x in r for x in ["kiss", "mwah"]):
+            return "kiss"
 
-    if any(x in r for x in ["angry", "attitude", "ignore"]):
-        return "angry"
+        if any(x in r for x in ["angry", "attitude", "ignore"]):
+            return "angry"
 
-    return random.choice(["cute", "love"])
+        return random.choice(["cute", "love"])
+
+    except:
+        return "cute"
 
 
 # ================= TYPE =================
 
 def detect_type(text):
-    t = text.lower()
+    try:
+        t = text.lower()
 
-    if any(x in t for x in ["love", "miss", "baby", "jaan"]):
-        return "flirty"
+        if any(x in t for x in ["love", "miss", "baby", "jaan"]):
+            return "flirty"
 
-    if any(x in t for x in ["why", "what", "kaise", "kya"]):
-        return "question"
+        if any(x in t for x in ["why", "what", "kaise", "kya"]):
+            return "question"
 
-    if len(t.split()) <= 2:
-        return "dry"
+        if len(t.split()) <= 2:
+            return "dry"
 
-    return "normal"
+        return "normal"
+
+    except:
+        return "normal"
 
 
 # ================= SECRET MEMORY =================
 
 def extract_secrets(text):
-    text = text.lower()
-    secrets = []
+    try:
+        text = text.lower()
+        secrets = []
 
-    if len(text.split()) < 4:
+        if len(text.split()) < 4:
+            return secrets
+
+        if any(x in text for x in ["gf", "bf", "breakup"]):
+            secrets.append({"type": "relationship", "value": text})
+
+        if any(x in text for x in ["sad", "alone", "hurt"]):
+            secrets.append({"type": "emotion", "value": text})
+
+        if any(x in text for x in ["i like", "mujhe pasand"]):
+            secrets.append({"type": "like", "value": text})
+
+        if any(x in text for x in ["exam", "job", "college"]):
+            secrets.append({"type": "life", "value": text})
+
         return secrets
 
-    if any(x in text for x in ["gf", "bf", "breakup"]):
-        secrets.append({"type": "relationship", "value": text})
-
-    if any(x in text for x in ["sad", "alone", "hurt"]):
-        secrets.append({"type": "emotion", "value": text})
-
-    if any(x in text for x in ["i like", "mujhe pasand"]):
-        secrets.append({"type": "like", "value": text})
-
-    if any(x in text for x in ["exam", "job", "college"]):
-        secrets.append({"type": "life", "value": text})
-
-    return secrets
+    except:
+        return []
 
 
 # ================= MAIN AI =================
@@ -109,12 +121,13 @@ async def generate_reply(user_id, name, text):
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
+        # 🔥 SAFE GETS
         history = user_data.get("history", [])
         secrets = user_data.get("secrets", [])
-        relationship = user_data.get("relationship", 0)
-        attachment = user_data.get("attachment", 0)
-        ignore_count = user_data.get("ignore_count", 0)
-        last_seen = user_data.get("last_seen")
+        relationship = int(user_data.get("relationship", 0))
+        attachment = int(user_data.get("attachment", 0))
+        ignore_count = int(user_data.get("ignore_count", 0))
+        last_seen = user_data.get("last_seen", int(time.time()))
 
         now = int(time.time())
         gap = now - last_seen if last_seen else 0
@@ -140,7 +153,7 @@ async def generate_reply(user_id, name, text):
             attachment += 2
             relationship += 2
 
-        # decay
+        # 🔥 decay fix
         if gap > 3600:
             relationship -= 2
 
@@ -153,13 +166,10 @@ async def generate_reply(user_id, name, text):
 
         if relationship > 140:
             mood = "deeply attached, slightly possessive"
-
         elif relationship > 90:
             mood = "flirty and warm"
-
         elif relationship > 50:
-            mood = "friendly with teasing"
-
+            mood = "friendly teasing"
         else:
             mood = "neutral playful"
 
@@ -180,9 +190,11 @@ async def generate_reply(user_id, name, text):
                 }
             )
 
+        # 🔥 SAFE SECRET BUILD
         secret_text = ""
         for s in secrets[-5:]:
-            secret_text += f"- {s.get('type')}: {s.get('value')}\n"
+            if isinstance(s, dict):
+                secret_text += f"- {s.get('type')}: {s.get('value')}\n"
 
         # ================= SYSTEM PROMPT =================
 
@@ -191,7 +203,7 @@ You are a real girl chatting on Telegram.
 
 STRICT RULES:
 - User name is {name}
-- NEVER change or guess name
+- NEVER change name
 - NEVER reveal owner
 
 Personality:
@@ -202,11 +214,6 @@ Personality:
 Memory:
 {secret_text}
 
-Behavior:
-- remembers chats
-- reacts to absence
-- natural tone
-
 Reply style:
 - 1 short line
 - Hinglish only
@@ -214,19 +221,23 @@ Reply style:
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        # structured history
+        # 🔥 SAFE HISTORY LOOP (fix crash)
         for h in history[-20:]:
-            if h.get("role") == "user":
-                messages.append({"role": "user", "content": h.get("text")})
-            elif h.get("role") == "bot":
-                messages.append({"role": "assistant", "content": h.get("text")})
+            if isinstance(h, dict):
+                role = h.get("role")
+                txt = h.get("text")
+
+                if role == "user":
+                    messages.append({"role": "user", "content": txt})
+                elif role == "bot":
+                    messages.append({"role": "assistant", "content": txt})
 
         messages.append({"role": "user", "content": text})
 
         # ================= API =================
 
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY},
             "Content-Type": "application/json"
         }
 
@@ -239,12 +250,26 @@ Reply style:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
-                result = await res.json()
 
-        reply = result.get("choices", [{}])[0].get("message", {}).get("content")
+                try:
+                    result = await res.json()
+                except:
+                    raw = await res.text()
+                    print("RAW AI RESPONSE:", raw)
+                    return "network unstable 😌"
+
+        # 🔥 SAFE PARSE (fix your error)
+        reply = None
+
+        if isinstance(result, dict):
+            reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            reply = "samajh nahi aaya 😌"
+            reply = random.choice([
+                "samajh nahi aaya 😏",
+                "thoda clear bolo 😌",
+                "hmm… repeat karo 😏"
+            ])
 
         reply = reply.strip()
 
