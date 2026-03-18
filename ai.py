@@ -1,4 +1,5 @@
-import requests
+import os
+import aiohttp
 from config import OPENROUTER_API_KEY
 from database import users
 
@@ -7,48 +8,59 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ---------------- MAIN AI ----------------
 
-async def generate_reply(user_id, text):
+async def generate_reply(user_id, name, text):
     try:
         user_data = users.find_one({"user_id": user_id}) or {}
 
         attachment = user_data.get("attachment", 0)
         gender = user_data.get("gender", "male")
+        last_msgs = user_data.get("history", [])
 
-        # 💘 emotional level
-        if attachment > 50:
-            mood = "deep emotional, slightly possessive"
-        elif attachment > 20:
-            mood = "flirty and teasing"
+        # 💘 Emotional scaling
+        if attachment > 60:
+            mood = "emotionally attached, slightly possessive, caring"
+        elif attachment > 30:
+            mood = "flirty, teasing, interested"
         else:
-            mood = "friendly but interesting"
+            mood = "playful, curious"
 
-        # 👩 behavior
+        # 👩 Gender behavior
         if gender == "male":
-            tone = "talk like a girlfriend, romantic, teasing, slightly bold"
+            tone = "girlfriend vibe, teasing, slightly bold but classy"
         else:
-            tone = "friendly girl, no flirting"
+            tone = "friendly girl, chill, no flirting"
+
+        # 🧠 Context memory (last 3 msgs)
+        history_text = ""
+        for msg in last_msgs[-3:]:
+            history_text += f"{msg}\n"
 
         system_prompt = f"""
-You are a real girl chatting on Telegram.
+You are a real girl chatting in a Telegram group.
+
+User name: {name}
 
 Rules:
 - Hinglish only
-- No roleplay actions (*smiles*, etc)
-- Short replies (1–2 lines max)
-- Natural texting style
+- 1 line reply ONLY
+- No roleplay (*smiles*, etc)
+- Natural texting like real human
+- Not robotic
 
 Personality:
 - {mood}
 - {tone}
-
-Style:
+- funny 😂
 - teasing 😏
-- emotional ❤️
-- slightly bold but NOT explicit
+- slightly flirty (controlled)
 
-Examples:
-"acha… mujhe miss kiya ya bas busy the 😏"
-"tum na thode dangerous lagte ho 😌"
+Conversation memory:
+{history_text}
+
+Goal:
+- feel real
+- addictive reply
+- make user reply back
 """
 
         headers = {
@@ -62,30 +74,38 @@ Examples:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            "temperature": 0.9,
-            "max_tokens": 120
+            "temperature": 1.0,
+            "max_tokens": 100
         }
 
-        res = requests.post(API_URL, headers=headers, json=data)
-        result = res.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=data) as res:
+                result = await res.json()
 
-        reply = result["choices"][0]["message"]["content"]
+        reply = result["choices"][0]["message"]["content"].strip()
 
-        # 💘 increase attachment
+        # 💘 update attachment
         users.update_one(
             {"user_id": user_id},
-            {"$inc": {"attachment": 2}},
+            {"$inc": {"attachment": 3}},
             upsert=True
         )
 
-        return reply.strip()
+        # 🧠 store memory
+        users.update_one(
+            {"user_id": user_id},
+            {"$push": {"history": text}},
+            upsert=True
+        )
+
+        return reply
 
     except Exception as e:
         print("AI ERROR:", e)
         return "acha phir se bolo na 😏"
 
 
-# ---------------- TAGALL (RECALL AI) ----------------
+# ---------------- TAGALL AI ----------------
 
 async def generate_tag_message(name):
     try:
@@ -95,20 +115,19 @@ async def generate_tag_message(name):
         }
 
         system_prompt = f"""
-You are a girl trying to revive a Telegram group.
+You are a girl reviving a Telegram group.
 
-Write a SHORT recall message for "{name}"
+Write ONE short message for: {name}
 
 Rules:
-- Hinglish only
+- Hinglish
 - 1 line only
-- Max 12 words
-- No roleplay actions
-- Emotional + teasing
-- Make user feel missed
+- max 10 words
+- emotional + teasing
+- no roleplay
 
 Examples:
-Rahul group bhool gaye kya aajkal 😏  
+Rahul group bhool gaye kya 😏  
 Aman itne busy ho ya ignore kar rahe ho  
 Rohit miss nahi karte kya yaha 😌  
 """
@@ -118,29 +137,31 @@ Rohit miss nahi karte kya yaha 😌
             "messages": [
                 {"role": "system", "content": system_prompt}
             ],
-            "temperature": 0.9,
-            "max_tokens": 40
+            "temperature": 1.0,
+            "max_tokens": 30
         }
 
-        res = requests.post(API_URL, headers=headers, json=data)
-        result = res.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=data) as res:
+                result = await res.json()
 
         return result["choices"][0]["message"]["content"].strip()
 
-    except:
-        return f"{name}, group bhool gaye kya 😏"
+    except Exception as e:
+        print("TAG AI ERROR:", e)
+        return f"{name} group bhool gaye kya 😏"
 
 
-# ---------------- EMOTION ----------------
+# ---------------- EMOTION DETECTOR (UPGRADED) ----------------
 
-async def detect_emotion(text):
+def detect_emotion(text):
     text = text.lower()
 
-    if "sad" in text:
+    if any(word in text for word in ["sad", "alone", "hurt"]):
         return "sad"
-    if "miss" in text or "love" in text:
+    elif any(word in text for word in ["love", "miss", "baby"]):
         return "love"
-    if "angry" in text:
+    elif any(word in text for word in ["angry", "hate"]):
         return "angry"
 
     return "normal"
