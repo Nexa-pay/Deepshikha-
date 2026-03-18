@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (
@@ -15,35 +15,16 @@ from database import users
 from ai import generate_reply, detect_emotion, generate_tag_message
 
 
-# ---------------- GENDER DETECT ----------------
-
-def detect_gender(name):
-    name = name.lower()
-
-    female_names = ["aisha", "priya", "neha", "sneha", "pooja", "kajal"]
-
-    for f in female_names:
-        if f in name:
-            return "female"
-
-    return "male"
-
-
 # ---------------- SAVE USER ----------------
 
 def save_user(update):
     user = update.message.from_user
-    name = user.first_name
-
-    gender = detect_gender(name)
 
     users.update_one(
         {"user_id": user.id},
         {
             "$set": {
-                "username": user.username,
-                "name": name,
-                "gender": gender,
+                "name": user.first_name,
                 "last_active": datetime.utcnow()
             },
             "$inc": {"messages": 1}
@@ -55,53 +36,85 @@ def save_user(update):
 # ---------------- SAFE SEND ----------------
 
 async def safe_send(context, chat_id, text):
-    for _ in range(3):
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
-            return
-        except TimedOut:
-            await asyncio.sleep(2)
-        except Exception as e:
-            print("SEND ERROR:", e)
-            return
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="HTML"
+        )
+    except TimedOut:
+        await asyncio.sleep(2)
 
 
-# ---------------- START ----------------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_send(context, update.effective_chat.id, "Acha… tum aa gaye 😏")
-
-
-# ---------------- TAGALL (FIXED SHORT AI) ----------------
+# ---------------- TAGALL ----------------
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_list = list(users.find().limit(20))
 
     for user in users_list:
-        try:
+        uid = user["user_id"]
+        name = user.get("name", "User")
+
+        msg = await generate_tag_message(name)
+
+        text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
+
+        await safe_send(context, update.effective_chat.id, text)
+        await asyncio.sleep(0.6)
+
+
+# ---------------- LEADERBOARD ----------------
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    top_users = list(users.find().sort("messages", -1).limit(5))
+
+    msg = "🏆 Top Active Users:\n\n"
+
+    for i, user in enumerate(top_users, start=1):
+        name = user.get("name", "User")
+        count = user.get("messages", 0)
+
+        msg += f"{i}. {name} — {count} msgs 🔥\n"
+
+    await safe_send(context, update.effective_chat.id, msg)
+
+
+# ---------------- DATABASE ----------------
+
+async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = users.count_documents({})
+
+    await safe_send(
+        context,
+        update.effective_chat.id,
+        f"👥 Total Users: {total}"
+    )
+
+
+# ---------------- AUTO REVIVE ----------------
+
+async def auto_message(context: ContextTypes.DEFAULT_TYPE):
+    while True:
+        users_list = list(users.find().limit(5))
+
+        for user in users_list:
             uid = user["user_id"]
             name = user.get("name", "User")
 
-            # 🔥 use dedicated short AI (IMPORTANT FIX)
-            reply = await generate_tag_message(name)
+            msg = await generate_tag_message(name)
 
-            message = f'<a href="tg://user?id={uid}">{name}</a>, {reply}'
+            text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
 
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=message,
-                parse_mode="HTML"
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=context.job.chat_id,
+                    text=text,
+                    parse_mode="HTML"
+                )
+            except:
+                pass
 
-            await asyncio.sleep(0.7)
-
-        except Exception as e:
-            print("TAG ERROR:", e)
+        await asyncio.sleep(7200)  # 2 hours
 
 
 # ---------------- MESSAGE ----------------
@@ -111,51 +124,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.message.from_user
-    user_id = user.id
-    name = user.first_name
     text = update.message.text.lower()
     chat_type = update.effective_chat.type
 
     bot_username = context.bot.username.lower()
     bot_id = context.bot.id
 
-    # ---------------- REPLY DETECTION ----------------
+    # reply detection
     is_reply = False
     if update.message.reply_to_message:
         if update.message.reply_to_message.from_user.id == bot_id:
             is_reply = True
 
-    # ---------------- GROUP LOGIC ----------------
     if chat_type in ["group", "supergroup"]:
-        if f"@{bot_username}" not in text and "@admin" not in text and not is_reply:
+        if f"@{bot_username}" not in text and not is_reply:
             return
 
-    # ---------------- SAVE USER ----------------
     save_user(update)
 
-    try:
-        # emotion tracking
-        emotion = await detect_emotion(text)
+    reply = await generate_reply(user.id, text)
 
-        users.update_one(
-            {"user_id": user_id},
-            {"$set": {"emotion": emotion}},
-            upsert=True
-        )
+    final = f'<a href="tg://user?id={user.id}">{user.first_name}</a>, {reply}'
 
-        # AI reply
-        reply = await generate_reply(user_id, text)
-
-        if not reply:
-            reply = "Tum ajeeb ho 😏"
-
-        # ✅ ALWAYS mention user
-        final = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
-
-        await safe_send(context, update.effective_chat.id, final)
-
-    except Exception as e:
-        print("ERROR:", e)
+    await safe_send(context, update.effective_chat.id, final)
 
 
 # ---------------- MAIN ----------------
@@ -163,8 +154,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tagall", tagall))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    app.add_handler(CommandHandler("database", database_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot running...")
