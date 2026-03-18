@@ -10,7 +10,7 @@ from telegram.ext import (
     filters,
 )
 
-from database import update_user, get_top_users, get_inactive_users
+from database import update_user, get_top_users, get_inactive_users, users
 from ai import generate_reply, generate_tag_message
 
 # ================= CONFIG =================
@@ -88,22 +88,37 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ================= BROADCAST =================
+# ================= BROADCAST (UPDATED 🔥) =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
 
     msg = " ".join(context.args)
-    groups = context.application.bot_data.get("groups", [])
 
+    if not msg:
+        return await update.message.reply_text("message bhejo")
+
+    sent = 0
+
+    # 👉 GROUPS
+    groups = context.application.bot_data.get("groups", [])
     for chat_id in groups:
         try:
             await context.bot.send_message(chat_id, msg)
+            sent += 1
         except:
             pass
 
-    await update.message.reply_text("done 😌")
+    # 👉 USERS
+    for u in users.find():
+        try:
+            await context.bot.send_message(u["user_id"], msg)
+            sent += 1
+        except:
+            pass
+
+    await update.message.reply_text(f"broadcast done… {sent} places 😏")
 
 
 # ================= MAIN MESSAGE =================
@@ -148,7 +163,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ================= WAKE WORD =================
     if "deepsikha" in text_lower and len(text.split()) <= 2:
-        return await update.message.reply_text("haan… kya hua?")
+        return await update.message.reply_text(f"haan {name}… kya hua?")
 
     # ================= SMART TRIGGER =================
     triggered = False
@@ -170,7 +185,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= AI RESPONSE =================
     reply = await generate_reply(user.id, name, text)
 
-    await update.message.reply_text(reply)
+    # 🔥 NAME MENTION FIX
+    await update.message.reply_text(f"{name}… {reply}")
 
 
 # ================= AUTO MESSAGE =================
