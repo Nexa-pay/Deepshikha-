@@ -18,6 +18,7 @@ groups = db["groups"]
 # 🔥 INDEXES (FAST + SAFE)
 users.create_index("user_id", unique=True)
 users.create_index("last_active")
+users.create_index("messages")  # 🔥 leaderboard fast
 groups.create_index("chat_id", unique=True)
 
 print("Database connected successfully 🚀")
@@ -46,9 +47,9 @@ def update_user(user_id, name):
                     "history": []
                 },
 
-                # 🔥 always update
+                # 🔥 always update (SAFE NAME FIX)
                 "$set": {
-                    "name": name,
+                    "name": name if name else "user",
                     "last_active": now
                 },
 
@@ -134,15 +135,19 @@ def get_inactive_users(hours=6):
         return []
 
 
-# ================= CLEANUP (🔥 IMPORTANT) =================
+# ================= CLEANUP (🔥 SMART CLEAN) =================
 
 def clean_dead_users():
     """
-    Remove users who blocked bot / invalid users
-    (call this after broadcast failures)
+    Remove users who are useless / blocked bot
     """
     try:
-        result = users.delete_many({"messages": {"$lte": 0}})
+        result = users.delete_many({
+            "$or": [
+                {"messages": {"$lte": 0}},
+                {"user_id": {"$exists": False}}
+            ]
+        })
         print(f"🧹 Cleaned users: {result.deleted_count}")
     except Exception as e:
         print("Cleanup error:", e)
