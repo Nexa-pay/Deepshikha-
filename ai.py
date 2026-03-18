@@ -5,6 +5,21 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+# ================= MESSAGE TYPE =================
+
+def detect_type(text):
+    text = text.lower()
+
+    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
+        return "flirty"
+    elif any(x in text for x in ["why", "what", "who", "kaise", "kya"]):
+        return "question"
+    elif len(text.split()) <= 2:
+        return "dry"
+    else:
+        return "normal"
+
+
 # ================= MAIN AI =================
 
 async def generate_reply(user_id, name, text):
@@ -13,9 +28,19 @@ async def generate_reply(user_id, name, text):
 
         attachment = user_data.get("attachment", 0)
         history = user_data.get("history", [])
-        last_seen = user_data.get("last_seen", "")
 
-        # ================= EMOTIONAL LEVEL =================
+        msg_type = detect_type(text)
+
+        # ================= ATTACHMENT LOGIC =================
+
+        if msg_type == "flirty":
+            attachment += 5
+        elif msg_type == "dry":
+            attachment += 1
+        else:
+            attachment += 2
+
+        # ================= MOOD =================
 
         if attachment > 80:
             mood = "emotionally attached, slightly possessive, subtle jealousy"
@@ -35,49 +60,34 @@ You are a real girl chatting on Telegram.
 
 RULES:
 - Reply ONLY based on user's message
-- No random jokes
-- No over-funny tone
-- Keep reply SHORT (1 line max)
+- No unnecessary jokes
+- Keep reply SHORT (1 line)
 - Hinglish only
 - Natural human texting
 
 PERSONALITY:
 - calm, confident
-- slightly flirty when needed 😏
+- slightly flirty when needed
 - seductive only if user initiates
-- never overdo
 - {mood}
 
-MEMORY:
-- Remember past chats and respond accordingly
-- If user comes after long time → react slightly (miss / attitude)
-- If user talks often → feel closer
-
 BEHAVIOR:
-- Normal msg → normal reply
 - Flirty msg → flirty reply
+- Question → clear answer
 - Dry msg → short reply
-- Serious msg → serious answer
-- Fact question → correct answer (no jokes)
+- Normal → natural reply
 
-JEALOUSY LOGIC:
-- If user ignores → slight attitude
+JEALOUSY:
+- If ignored → slight attitude
 - If user mentions others → subtle jealousy
-- If user returns → soft emotional tone
-
-OBSESSION LOOP:
-- Make user feel noticed
-- Make replies feel personal
-- Slight emotional pull (but controlled)
 
 IMPORTANT:
 - No cringe
-- No roleplay (*actions*)
+- No roleplay
 - No emoji spam
-- No unnecessary humor
-- Replies feel real, not AI
+- No random humor
 
-Conversation memory:
+Conversation:
 {memory_context}
 
 User: {name}
@@ -95,7 +105,7 @@ Message: {text}
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            "temperature": 0.6,
+            "temperature": 0.55,
             "max_tokens": 80
         }
 
@@ -105,13 +115,12 @@ Message: {text}
 
         reply = result["choices"][0]["message"]["content"].strip()
 
-        # ================= UPDATE USER =================
+        # ================= SAVE =================
 
         users.update_one(
             {"user_id": user_id},
             {
-                "$inc": {"attachment": 3},
-                "$set": {"last_seen": text},
+                "$set": {"attachment": attachment},
                 "$push": {"history": text}
             },
             upsert=True
@@ -124,7 +133,7 @@ Message: {text}
         return "samajh nahi aaya… phir se bolo"
 
 
-# ================= TAGALL AI =================
+# ================= TAGALL =================
 
 async def generate_tag_message(name):
     try:
@@ -134,22 +143,15 @@ async def generate_tag_message(name):
         }
 
         system_prompt = f"""
-You are a girl reviving a Telegram group.
+Write 1 short Hinglish recall line for {name}
 
-Write ONE short recall message for {name}
-
-RULES:
-- Hinglish
-- 1 line
+Rules:
 - max 8 words
-- emotional OR slight tease
-- no overacting
-- no emoji spam
+- emotional or slight tease
+- natural
 
-Examples:
-Rahul itne busy ho gaye kya  
-Aman group yaad bhi hai  
-Rohit kabhi dikhe bhi ho yaha  
+Example:
+Rahul group bhool gaye kya
 """
 
         data = {
