@@ -81,7 +81,7 @@ async def generate_reply(user_id, name, text):
         msg_type = detect_type(text)
         personality, topics = analyze_user(text)
 
-        # ================= RELATIONSHIP SYSTEM =================
+        # ================= RELATIONSHIP =================
 
         if msg_type == "flirty":
             attachment += 5
@@ -114,29 +114,28 @@ async def generate_reply(user_id, name, text):
         else:
             comeback = "normal flow"
 
-        # ================= POSSESSIVE TRIGGER =================
+        # ================= POSSESSIVE =================
 
         possessive_hint = ""
 
         if relationship > 80 and msg_type == "flirty":
-            possessive_hint = "add slight possessive teasing tone"
+            possessive_hint = "slight possessive teasing"
         elif ignore_count > 5:
-            possessive_hint = "show mild attitude, feels ignored"
+            possessive_hint = "feels ignored, slight attitude"
 
         # ================= MEMORY =================
 
-        memory_context = "\n".join(history[-10:])
         user_type = personality_data.get("type", "normal")
         fav_topics = ", ".join(fav_data.get("topics", []))
 
-        # ================= PROMPT =================
+        # ================= SYSTEM PROMPT =================
 
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
 RULES:
 - Reply ONLY based on user's message
-- Continue conversation naturally
+- Continue conversation naturally (very important)
 - Keep reply SHORT (1 line)
 - Hinglish only
 
@@ -154,7 +153,6 @@ EMOTIONAL MEMORY:
 - You remember past chats
 - If user ignores → slight attitude
 - If user returns → react like you noticed
-- If user is consistent → feel closer
 
 COMEBACK:
 - {comeback}
@@ -167,13 +165,27 @@ IMPORTANT:
 - No roleplay
 - No emoji spam
 - No unnecessary humor
-
-Conversation History (very important, continue naturally):
-{memory_context}
-
-User: {name}
-Message: {text}
 """
+
+        # ================= BUILD CHAT HISTORY =================
+
+        messages = [{"role": "system", "content": system_prompt}]
+
+        for h in history[-10:]:
+            if h.startswith("User:"):
+                messages.append({
+                    "role": "user",
+                    "content": h.replace("User: ", "")
+                })
+            elif h.startswith("Bot:"):
+                messages.append({
+                    "role": "assistant",
+                    "content": h.replace("Bot: ", "")
+                })
+
+        messages.append({"role": "user", "content": text})
+
+        # ================= API =================
 
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -182,11 +194,8 @@ Message: {text}
 
         data = {
             "model": "deepseek/deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            "temperature": 0.55,
+            "messages": messages,
+            "temperature": 0.6,
             "max_tokens": 80
         }
 
@@ -222,7 +231,7 @@ Message: {text}
                             f"User: {text}",
                             f"Bot: {reply}"
                         ],
-                        "$slice": -15
+                        "$slice": -20
                     }
                 }
             },
