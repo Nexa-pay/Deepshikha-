@@ -1,6 +1,7 @@
 import logging
 import random
 import asyncio
+import time  # 🔥 NEW
 
 from telegram import Update, ChatMemberUpdated
 from telegram.ext import (
@@ -168,6 +169,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
+    chat_id = update.message.chat_id
+
+    # 🔥 ACTIVITY TRACK
+    context.application.bot_data[chat_id] = time.time()
+
     # sticker id getter
     if update.message.sticker:
         await update.message.reply_text(update.message.sticker.file_id)
@@ -180,19 +186,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     text_lower = text.lower()
     chat_type = update.message.chat.type
-    chat_id = update.message.chat_id
 
     bot_username = context.bot.username.lower()
     is_reply = update.message.reply_to_message
 
-    # SAVE GROUP
     if chat_type in ["group", "supergroup"]:
         save_group(chat_id)
 
-    # SAVE USER
     update_user(user.id, user.first_name)
 
-    # ================= MEMBER TRACK =================
     members = context.application.bot_data.setdefault("members", [])
     if not any(u["id"] == user.id for u in members):
         members.append({"id": user.id, "name": user.first_name})
@@ -226,13 +228,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not triggered:
         return
 
-    # ================= AI =================
-    try:
-        reply = await generate_reply(user.id, user.first_name, text)
-    except:
-        return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
+    reply = await generate_reply(user.id, user.first_name, text)
 
-    # ================= DELAY =================
     delay = random.randint(MIN_DELAY, MAX_DELAY)
 
     for _ in range(max(1, delay // 2)):
@@ -243,31 +240,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-    # ================= STICKER FIX =================
+    # ================= STICKER =================
     try:
         mood = detect_reply_mood(reply)
-
         if mood in STICKERS and STICKERS[mood]:
-            await context.bot.send_sticker(
-                chat_id,
-                random.choice(STICKERS[mood])
-            )
+            if random.randint(1, 100) <= 70:
+                await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
     except Exception as e:
         print("Sticker error:", e)
 
     # ================= VOICE =================
     if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
         voice_file = text_to_voice(reply, user.id)
-
         if voice_file:
             with open(voice_file, "rb") as v:
                 await update.message.reply_voice(v)
-
             delete_voice(voice_file)
 
-    # ================= RANDOM MESSAGE =================
-    if random.randint(1, 100) <= RANDOM_MESSAGE_CHANCE:
-        await asyncio.sleep(random.randint(5, 15))
+    # ================= RANDOM MESSAGE (REDUCED) =================
+    if random.randint(1, 100) <= 5:  # 🔥 reduced spam
+        await asyncio.sleep(random.randint(10, 20))
         await context.bot.send_message(chat_id, random.choice([
             "sab itne chup kyun hai",
             "koi interesting banda hai yaha?",
@@ -280,15 +272,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id, f"{u['name']}… tum chup kyu ho 😏")
 
 
-# ================= AUTO =================
+# ================= AUTO (SMART) =================
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in get_groups():
         try:
+            last = context.application.bot_data.get(chat_id, 0)
+
+            # 🔥 only active chats
+            if time.time() - last > 600:
+                continue
+
+            # 🔥 low chance
+            if random.randint(1, 100) > 10:
+                continue
+
             await context.bot.send_message(chat_id, random.choice([
                 "aaj sab itne chup kyu hai",
                 "koi baat karega ya sab busy hai",
                 "itna silent group… interesting nahi hai",
             ]))
+
         except:
             pass
 
@@ -308,7 +311,7 @@ def main():
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
-    app.job_queue.run_repeating(auto_message, interval=1800, first=60)
+    app.job_queue.run_repeating(auto_message, interval=1800, first=120)
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
