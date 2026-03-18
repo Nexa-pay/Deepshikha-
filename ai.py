@@ -237,7 +237,7 @@ Reply style:
         # ================= API =================
 
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY},
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
         }
 
