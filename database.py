@@ -13,6 +13,11 @@ client = MongoClient(MONGO_URI)
 db = client["telegram_bot"]
 
 users = db["users"]
+groups = db["groups"]
+
+# 🔥 INDEXES (IMPORTANT FOR SPEED + NO DUPLICATES)
+users.create_index("user_id", unique=True)
+groups.create_index("chat_id", unique=True)
 
 print("Database connected successfully 🚀")
 
@@ -20,14 +25,16 @@ print("Database connected successfully 🚀")
 # ================= DEFAULT USER =================
 
 def default_user(user_id, name):
+    now = int(time.time())
+
     return {
         "user_id": user_id,
         "name": name,
 
         # activity
         "messages": 0,
-        "last_active": int(time.time()),
-        "last_seen": int(time.time()),
+        "last_active": now,
+        "last_seen": now,
 
         # emotional system
         "attachment": 0,
@@ -53,23 +60,40 @@ def default_user(user_id, name):
 def update_user(user_id, name):
     now = int(time.time())
 
-    existing = users.find_one({"user_id": user_id})
-
-    if not existing:
-        users.insert_one(default_user(user_id, name))
-    else:
-        users.update_one(
-            {"user_id": user_id},
-            {
-                "$set": {
-                    "name": name,
-                    "last_active": now
-                },
-                "$inc": {
-                    "messages": 1
-                }
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$setOnInsert": default_user(user_id, name),  # 🔥 safe insert
+            "$set": {
+                "name": name,
+                "last_active": now
+            },
+            "$inc": {
+                "messages": 1
             }
+        },
+        upsert=True
+    )
+
+
+# ================= GROUP SYSTEM =================
+
+def save_group(chat_id):
+    try:
+        groups.update_one(
+            {"chat_id": chat_id},
+            {"$set": {"chat_id": chat_id}},
+            upsert=True
         )
+    except:
+        pass  # duplicate safe
+
+
+def get_groups():
+    try:
+        return [g["chat_id"] for g in groups.find()]
+    except:
+        return []
 
 
 # ================= GET TOP USERS =================
@@ -99,7 +123,7 @@ def get_user(user_id):
     return users.find_one({"user_id": user_id})
 
 
-# ================= RESET USER (OPTIONAL DEBUG) =================
+# ================= RESET USER =================
 
 def reset_user(user_id):
     users.delete_one({"user_id": user_id})
