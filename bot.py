@@ -88,7 +88,7 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ================= BROADCAST (UPDATED 🔥) =================
+# ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
@@ -101,16 +101,15 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent = 0
 
-    # 👉 GROUPS
-    groups = context.application.bot_data.get("groups", [])
-    for chat_id in groups:
+    # GROUPS
+    for chat_id in context.application.bot_data.get("groups", []):
         try:
             await context.bot.send_message(chat_id, msg)
             sent += 1
         except:
             pass
 
-    # 👉 USERS
+    # USERS
     for u in users.find():
         try:
             await context.bot.send_message(u["user_id"], msg)
@@ -150,7 +149,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= SAVE USER =================
     update_user(user.id, name)
 
-    # ================= IDENTITY =================
+    # ================= QUICK RESPONSES =================
+
     if "who are you" in text_lower or "tum kaun ho" in text_lower:
         return await update.message.reply_text(
             "main Deepsikha hu… thodi alag hu sab se 😌"
@@ -161,11 +161,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "AAKASH mera creator hai… kaafi special hai wo 😏"
         )
 
-    # ================= WAKE WORD =================
-    if "deepsikha" in text_lower and len(text.split()) <= 2:
-        return await update.message.reply_text(f"haan {name}… kya hua?")
-
     # ================= SMART TRIGGER =================
+
     triggered = False
 
     if chat_type == "private":
@@ -176,17 +173,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         triggered = True
     elif "@admin" in text_lower:
         triggered = True
-    elif "deepsikha" in text_lower:
+    elif "deepsikha" in text_lower:   # ✅ FULL WAKE (NO RETURN)
         triggered = True
 
     if not triggered:
         return
 
     # ================= AI RESPONSE =================
+
     reply = await generate_reply(user.id, name, text)
 
-    # 🔥 NAME MENTION FIX
-    await update.message.reply_text(f"{name}… {reply}")
+    # ✅ NO NAME PREFIX (FIXED)
+    await update.message.reply_text(reply)
 
 
 # ================= AUTO MESSAGE =================
@@ -218,7 +216,6 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("tagall", tagall))
@@ -227,7 +224,6 @@ def main():
     app.add_handler(CommandHandler("revive", revive))
     app.add_handler(CommandHandler("broadcast", broadcast))
 
-    # Messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # 🔥 Auto message every 30 min
