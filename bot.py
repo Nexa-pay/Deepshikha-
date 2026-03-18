@@ -116,10 +116,13 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = result.chat.id
         save_group(chat_id)
 
-        await context.bot.send_message(
-            chat_id,
-            "hii… main Deepsikha hu 😏 ab thoda interesting hoga yaha"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id,
+                "hii… main Deepsikha hu 😏"
+            )
+        except:
+            pass
 
 
 # ================= WELCOME =================
@@ -134,7 +137,7 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(random.choice([
             f"{member.first_name}… late aaye ho 😏",
             f"welcome {member.first_name} 😌",
-            f"{member.first_name} aa gaye… dekhte hai 😏",
+            f"{member.first_name} aa gaye 😏",
         ]))
 
 
@@ -171,7 +174,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.message.chat_id
         context.application.bot_data[chat_id] = time.time()
 
-        # sticker id fetch
         if update.message.sticker:
             await update.message.reply_text(update.message.sticker.file_id)
             return
@@ -187,11 +189,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = context.bot.username.lower()
         is_reply = update.message.reply_to_message
 
-        # save group
         if chat_type in ["group", "supergroup"]:
             save_group(chat_id)
 
-        # save user
         update_user(user.id, user.first_name)
 
         # ================= IMAGE =================
@@ -201,16 +201,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("itni jaldi photo? 😏")
             return
-
-        # ================= JEALOUSY =================
-        if chat_type in ["group", "supergroup"]:
-            if "deepsikha" not in text_lower and not is_reply:
-                if random.randint(1, 100) <= JEALOUSY_CHANCE:
-                    return await update.message.reply_text(random.choice([
-                        "ignore kar rahe ho 😒",
-                        "main boring ho gayi kya 😏",
-                        "acha… dusro se baat 😒",
-                    ]))
 
         # ================= TRIGGER =================
         triggered = (
@@ -237,45 +227,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply)
 
-        # ================= STICKER FIX =================
+        # ================= STICKER (STRONG) =================
         try:
-            user_data = users.find_one({"user_id": user.id}) or {}
-            last_sticker = user_data.get("last_sticker")
-
+            combined = (text + " " + reply).lower()
             mood = detect_reply_mood(reply)
 
+            if "love" in combined:
+                mood = "love"
+            elif "sad" in combined:
+                mood = "cry"
+            elif "kiss" in combined:
+                mood = "kiss"
+            elif "angry" in combined or "ignore" in combined:
+                mood = "angry"
+
             if mood in STICKERS and STICKERS[mood]:
-                choices = [s for s in STICKERS[mood] if s != last_sticker]
-                if not choices:
-                    choices = STICKERS[mood]
-
-                sticker = random.choice(choices)
-
-                if random.randint(1, 100) <= 50:
-                    await context.bot.send_sticker(chat_id, sticker)
-
-                    users.update_one(
-                        {"user_id": user.id},
-                        {"$set": {"last_sticker": sticker}}
-                    )
+                if random.randint(1, 100) <= 70:
+                    await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
 
         except Exception as e:
             print("Sticker error:", e)
 
         # ================= VOICE =================
-        if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
+        if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao", "audio"]):
             voice_file = text_to_voice(reply, user.id)
 
             if voice_file:
-                with open(voice_file, "rb") as v:
-                    await update.message.reply_voice(v)
+                try:
+                    with open(voice_file, "rb") as v:
+                        await context.bot.send_voice(chat_id, v)
+                except Exception as e:
+                    print("Voice error:", e)
 
                 delete_voice(voice_file)
-
-        # ================= RANDOM LOW =================
-        if random.randint(1, 100) <= 3:
-            await asyncio.sleep(random.randint(10, 20))
-            await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
 
     except Exception as e:
         print("Main handler error:", e)
@@ -288,13 +272,13 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
         try:
             last = context.application.bot_data.get(chat_id, 0)
 
-            if time.time() - last > 600:
+            if time.time() - last > 900:  # 🔥 less spam
                 continue
 
-            if random.randint(1, 100) > 5:
+            if random.randint(1, 100) > 3:
                 continue
 
-            await context.bot.send_message(chat_id, "koi baat karega? 😏")
+            await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
 
         except:
             pass
@@ -320,7 +304,7 @@ def main():
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
-
+    
 
 if __name__ == "__main__":
     main()
