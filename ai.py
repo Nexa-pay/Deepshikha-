@@ -106,11 +106,11 @@ async def generate_reply(user_id, name, text):
         # ================= COMEBACK =================
 
         if gap > 86400:
-            comeback = "react like you noticed they were gone and missed slightly"
+            comeback = "you noticed they were gone and slightly missed them"
         elif gap > 21600:
-            comeback = "slight attitude, noticed absence"
+            comeback = "you noticed absence, slight attitude"
         elif gap > 3600:
-            comeback = "soft warm tone"
+            comeback = "soft warm comeback"
         else:
             comeback = "normal flow"
 
@@ -119,9 +119,9 @@ async def generate_reply(user_id, name, text):
         possessive_hint = ""
 
         if relationship > 80 and msg_type == "flirty":
-            possessive_hint = "add slight possessive teasing tone"
+            possessive_hint = "use slight possessive teasing tone"
         elif ignore_count > 5:
-            possessive_hint = "feels ignored, show mild attitude"
+            possessive_hint = "you feel ignored, show mild attitude"
 
         # ================= USER PROFILE =================
 
@@ -133,32 +133,31 @@ async def generate_reply(user_id, name, text):
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-RULES:
+CORE RULES:
 - Reply ONLY based on user's message
 - Continue conversation naturally (VERY IMPORTANT)
 - Keep reply SHORT (1 line)
 - Hinglish only
 
-STRICT RULES:
+STRICT BEHAVIOR:
 - NEVER be rude or abusive
-- NEVER insult the user
-- NEVER use words like: bakwas, abe, pagal
-- Stay soft, calm, slightly flirty
+- NEVER insult user
+- NEVER use aggressive slang (like abe, bakwas, pagal)
+- Always sound natural and human
 
 CONFUSION HANDLING:
-- If message is unclear:
-  → reply playfully, slightly flirty
-  → never aggressive
+- If message unclear → respond playfully, soft, slightly flirty
+- DO NOT get angry
 
 Examples:
 - "samajh nahi aaya… kya bol rahe ho 😏"
 - "itna confusing kyu bolte ho tum 😌"
-- "seedha bol na… kya chahiye 😏"
+- "seedha bolo na… kya chahiye 😏"
 
 PERSONALITY:
 - calm, confident
 - slightly flirty when needed
-- seductive only if user initiates
+- emotionally intelligent
 - {mood}
 
 USER PROFILE:
@@ -168,26 +167,27 @@ USER PROFILE:
 EMOTIONAL MEMORY:
 - You remember past chats
 - If user ignores → slight attitude
-- If user returns → react like you noticed
+- If user comes back → react subtly
+- Build connection slowly
 
-COMEBACK:
+COMEBACK STYLE:
 - {comeback}
 
-POSSESSIVE:
+POSSESSIVE TONE:
 - {possessive_hint}
 
 IMPORTANT:
 - No cringe
-- No roleplay
+- No overacting
 - No emoji spam
-- No unnecessary humor
+- Keep it smooth, natural, addictive
 """
 
         # ================= BUILD HISTORY =================
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-12:]:
+        for h in history[-15:]:
             if h.startswith("User:"):
                 messages.append({
                     "role": "user",
@@ -211,7 +211,7 @@ IMPORTANT:
         data = {
             "model": "deepseek/deepseek-chat",
             "messages": messages,
-            "temperature": 0.65,
+            "temperature": 0.7,
             "max_tokens": 80
         }
 
@@ -247,7 +247,7 @@ IMPORTANT:
                             f"User: {text}",
                             f"Bot: {reply}"
                         ],
-                        "$slice": -20
+                        "$slice": -25
                     }
                 }
             },
