@@ -114,7 +114,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.message.from_user
     name = user.first_name
-    text = update.message.text
+    text = update.message.text.strip()
     text_lower = text.lower()
     chat_type = update.message.chat.type
 
@@ -135,20 +135,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= SAVE USER =================
     update_user(user.id, name)
 
-    # ================= WAKE WORD =================
-    if "deepsikha" in text_lower:
-        return await update.message.reply_text(f"haan {name}… bula rahe the?")
-
     # ================= IDENTITY =================
     if "who are you" in text_lower or "tum kaun ho" in text_lower:
         return await update.message.reply_text(
-            "main Deepsikha hu… thodi alag hu sab se"
+            "main Deepsikha hu… thodi alag hu sab se 😌"
         )
 
     if "owner" in text_lower:
         return await update.message.reply_text(
-            "AAKASH mera creator hai… kaafi acha hai wo 😌"
+            "AAKASH mera creator hai… kaafi special hai wo 😏"
         )
+
+    # ================= WAKE WORD (SHORT ONLY) =================
+    if "deepsikha" in text_lower and len(text.split()) <= 2:
+        return await update.message.reply_text(f"haan {name}… kya hua?")
 
     # ================= SMART TRIGGER =================
     triggered = False
@@ -157,7 +157,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         triggered = True
     elif f"@{bot_username}" in text_lower:
         triggered = True
-    elif is_reply and is_reply.from_user.id == context.bot.id:
+    elif is_reply and is_reply.from_user and is_reply.from_user.id == context.bot.id:
         triggered = True
     elif "@admin" in text_lower:
         triggered = True
@@ -170,7 +170,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= AI RESPONSE =================
     reply = await generate_reply(user.id, name, text)
 
-    await update.message.reply_text(reply)
+    await update.message.reply_text(f"{name}… {reply}")
 
 
 # ================= AUTO MESSAGE =================
