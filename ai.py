@@ -17,7 +17,6 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # ================= IMAGE SYSTEM =================
 
 IMAGE_URLS = [
-    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4818.jpg",
     "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
 ]
 
