@@ -1,5 +1,8 @@
 import asyncio
+import random
+import string
 from datetime import datetime, timedelta
+
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (
@@ -10,21 +13,37 @@ from telegram.ext import (
     filters
 )
 
-from config import TELEGRAM_TOKEN
-from database import users
+from config import TELEGRAM_TOKEN, OWNER_ID
+from database import users, tokens
 from ai import generate_reply, detect_emotion, generate_tag_message
+
+
+# ---------------- GENDER DETECT ----------------
+
+def detect_gender(name):
+    name = name.lower()
+    female_names = ["aisha", "priya", "neha", "sneha", "pooja", "kajal"]
+
+    for f in female_names:
+        if f in name:
+            return "female"
+
+    return "male"
 
 
 # ---------------- SAVE USER ----------------
 
 def save_user(update):
     user = update.message.from_user
+    name = user.first_name
 
     users.update_one(
         {"user_id": user.id},
         {
             "$set": {
-                "name": user.first_name,
+                "username": user.username,
+                "name": name,
+                "gender": detect_gender(name),
                 "last_active": datetime.utcnow()
             },
             "$inc": {"messages": 1}
@@ -40,10 +59,57 @@ async def safe_send(context, chat_id, text):
         await context.bot.send_message(
             chat_id=chat_id,
             text=text,
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
     except TimedOut:
         await asyncio.sleep(2)
+
+
+# ---------------- TOKEN SYSTEM ----------------
+
+def create_token():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+
+async def gen_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        return
+
+    code = create_token()
+
+    tokens.insert_one({
+        "code": code,
+        "used": False
+    })
+
+    await update.message.reply_text(f"🎟 Token: {code}")
+
+
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+
+    if not context.args:
+        await update.message.reply_text("Token bhejo 😏")
+        return
+
+    code = context.args[0]
+
+    token = tokens.find_one({"code": code})
+
+    if not token or token["used"]:
+        await update.message.reply_text("Invalid token ❌")
+        return
+
+    tokens.update_one({"code": code}, {"$set": {"used": True}})
+
+    users.update_one(
+        {"user_id": user_id},
+        {"$set": {"premium": True}},
+        upsert=True
+    )
+
+    await update.message.reply_text("Premium unlocked 💎")
 
 
 # ---------------- TAGALL ----------------
@@ -52,15 +118,19 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_list = list(users.find().limit(20))
 
     for user in users_list:
-        uid = user["user_id"]
-        name = user.get("name", "User")
+        try:
+            uid = user["user_id"]
+            name = user.get("name", "User")
 
-        msg = await generate_tag_message(name)
+            msg = await generate_tag_message(name)
 
-        text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
+            text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
 
-        await safe_send(context, update.effective_chat.id, text)
-        await asyncio.sleep(0.6)
+            await safe_send(context, update.effective_chat.id, text)
+            await asyncio.sleep(0.6)
+
+        except Exception as e:
+            print("TAG ERROR:", e)
 
 
 # ---------------- LEADERBOARD ----------------
@@ -83,12 +153,11 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = users.count_documents({})
+    premium = users.count_documents({"premium": True})
 
-    await safe_send(
-        context,
-        update.effective_chat.id,
-        f"👥 Total Users: {total}"
-    )
+    msg = f"👥 Users: {total}\n💎 Premium: {premium}"
+
+    await safe_send(context, update.effective_chat.id, msg)
 
 
 # ---------------- AUTO REVIVE ----------------
@@ -98,21 +167,22 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
         users_list = list(users.find().limit(5))
 
         for user in users_list:
-            uid = user["user_id"]
-            name = user.get("name", "User")
-
-            msg = await generate_tag_message(name)
-
-            text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
-
             try:
+                uid = user["user_id"]
+                name = user.get("name", "User")
+
+                msg = await generate_tag_message(name)
+
+                text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
+
                 await context.bot.send_message(
-                    chat_id=context.job.chat_id,
+                    chat_id=context.bot_data["group_id"],
                     text=text,
                     parse_mode="HTML"
                 )
-            except:
-                pass
+
+            except Exception as e:
+                print("AUTO ERROR:", e)
 
         await asyncio.sleep(7200)  # 2 hours
 
@@ -124,29 +194,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.message.from_user
+    user_id = user.id
+    name = user.first_name
     text = update.message.text.lower()
     chat_type = update.effective_chat.type
 
     bot_username = context.bot.username.lower()
     bot_id = context.bot.id
 
-    # reply detection
+    # reply detect
     is_reply = False
     if update.message.reply_to_message:
         if update.message.reply_to_message.from_user.id == bot_id:
             is_reply = True
 
+    # group logic
     if chat_type in ["group", "supergroup"]:
-        if f"@{bot_username}" not in text and not is_reply:
+        if f"@{bot_username}" not in text and "@admin" not in text and not is_reply:
             return
 
     save_user(update)
 
-    reply = await generate_reply(user.id, text)
+    try:
+        user_data = users.find_one({"user_id": user_id}) or {}
+        is_premium = user_data.get("premium", False)
 
-    final = f'<a href="tg://user?id={user.id}">{user.first_name}</a>, {reply}'
+        # 🔒 FREE LIMIT
+        if not is_premium:
+            if user_data.get("messages", 0) > 30:
+                await safe_send(context, update.effective_chat.id, "Free limit khatam 😏 /redeem karo")
+                return
 
-    await safe_send(context, update.effective_chat.id, final)
+        # emotion
+        emotion = await detect_emotion(text)
+
+        users.update_one(
+            {"user_id": user_id},
+            {"$set": {"emotion": emotion}},
+            upsert=True
+        )
+
+        reply = await generate_reply(user_id, text)
+
+        final = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
+
+        await safe_send(context, update.effective_chat.id, final)
+
+    except Exception as e:
+        print("ERROR:", e)
 
 
 # ---------------- MAIN ----------------
@@ -154,10 +249,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # store group id (IMPORTANT)
+    app.bot_data["group_id"] = -100XXXXXXXXXX  # 🔥 PUT YOUR GROUP ID HERE
+
+    # commands
     app.add_handler(CommandHandler("tagall", tagall))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("database", database_cmd))
+    app.add_handler(CommandHandler("gentoken", gen_token))
+    app.add_handler(CommandHandler("redeem", redeem))
+
+    # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # auto task
+    app.create_task(auto_message(app))
 
     print("Bot running...")
     app.run_polling()
