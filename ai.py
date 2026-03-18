@@ -30,7 +30,7 @@ def get_random_image():
     return random.choice(IMAGE_URLS)
 
 
-# ================= REPLY → MOOD (🔥 IMPORTANT) =================
+# ================= REPLY → MOOD =================
 
 def detect_reply_mood(reply):
     r = reply.lower()
@@ -44,13 +44,24 @@ def detect_reply_mood(reply):
     if any(x in r for x in ["kiss"]):
         return "kiss"
 
-    if any(x in r for x in ["angry", "irritating"]):
+    if any(x in r for x in ["angry", "ignore", "attitude"]):
         return "angry"
 
     if any(x in r for x in ["haha", "lol"]):
         return "cute"
 
     return "cute"
+
+
+# ================= INTENSITY =================
+
+def detect_intensity(reply):
+    r = reply.lower()
+
+    if any(x in r for x in ["bohot", "bahut", "so much", "really", "very"]):
+        return "intense"
+
+    return "light"
 
 
 # ================= MESSAGE TYPE =================
@@ -110,6 +121,20 @@ def get_gap(last_time):
 
 async def generate_reply(user_id, name, text):
     try:
+        text_lower = text.lower()
+
+        # 🔥 OWNER PROTECTION
+        if "owner" in text_lower:
+            return random.choice([
+                "owner ka kya karoge 😏",
+                "main hu na… owner chhodo 😌",
+                "itni curiosity kyun hai 😏"
+            ])
+
+        # 🔥 NAME DIRECT ANSWER (NO AI GUESS)
+        if "mera naam" in text_lower or "my name" in text_lower:
+            return f"tumhara naam {name} hai 😏"
+
         user_data = users.find_one({"user_id": user_id}) or {}
 
         attachment = user_data.get("attachment", 0)
@@ -175,7 +200,13 @@ async def generate_reply(user_id, name, text):
         system_prompt = f"""
 You are a real girl chatting on Telegram.
 
-- Reply SHORT (1 line)
+IMPORTANT:
+- User name is {name}
+- NEVER guess or change name
+- NEVER reveal bot owner
+
+Rules:
+- Short reply (1 line)
 - Hinglish only
 - Natural human tone
 
@@ -184,14 +215,10 @@ Personality:
 - slightly flirty
 - {mood}
 
-User:
-- {personality_data.get("type","normal")}
-- {", ".join(fav_data.get("topics", []))}
-
 Behavior:
 - remember chats
 - react to absence
-- stay smooth
+- slight attitude if ignored
 
 Comeback: {comeback}
 Tone: {possessive_hint}
@@ -267,31 +294,3 @@ Tone: {possessive_hint}
     except Exception as e:
         print("AI ERROR:", e)
         return "clear nahi hua… thoda aur clearly bolo 😌"
-
-
-# ================= TAG MESSAGE =================
-
-async def generate_tag_message(name):
-    try:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": MODEL,
-            "messages": [
-                {"role": "system", "content": f"Write 1 short Hinglish recall line for {name}"}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 30
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_URL, headers=headers, json=data) as res:
-                result = await res.json()
-
-        return result.get("choices", [{}])[0].get("message", {}).get("content", f"{name} kaha ho").strip()
-
-    except:
-        return f"{name} kaha ho"
