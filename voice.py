@@ -1,8 +1,7 @@
-import os
-import uuid
-import re
 import requests
-from gtts import gTTS
+import uuid
+import os
+import re
 
 from config import (
     ELEVENLABS_API_KEY,
@@ -11,31 +10,40 @@ from config import (
     VOICE_STYLE
 )
 
-
 # ================= CLEAN TEXT =================
 
 def clean_text(text):
     text = re.sub(r"[^\w\s,.?!]", "", text)
 
-    if len(text) > 250:
-        text = text[:250]
+    if len(text) > 200:
+        text = text[:200]
 
     return text.strip()
 
 
-# ================= STYLE =================
+# ================= HINGLISH BOOST =================
 
-def apply_style(text):
+def style_text(text):
     if VOICE_STYLE == "soft":
-        text = text.replace(".", "...").replace("?", "?~")
-        return f"{text}"
+        # 🔥 natural pauses
+        text = text.replace(",", "...")
+        text = text + "..."
+
     return text
 
 
-# ================= ELEVENLABS =================
+# ================= ELEVEN VOICE =================
 
-def elevenlabs_tts(text, filename):
+def text_to_voice(text, user_id):
     try:
+        if not ELEVENLABS_API_KEY:
+            return None
+
+        text = clean_text(text)
+        text = style_text(text)
+
+        filename = f"voice_{user_id}_{uuid.uuid4().hex[:6]}.mp3"
+
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
 
         headers = {
@@ -46,71 +54,33 @@ def elevenlabs_tts(text, filename):
         data = {
             "text": text,
             "model_id": VOICE_MODEL,
+
+            # 🔥 MAGIC SETTINGS (REALISTIC)
             "voice_settings": {
-                "stability": 0.25,
-                "similarity_boost": 0.9,
-                "style": 0.85,
+                "stability": 0.35,        # 🔥 less robotic
+                "similarity_boost": 0.85,
+                "style": 0.7,             # 🔥 more expressive
                 "use_speaker_boost": True
             }
         }
 
-        res = requests.post(url, json=data, headers=headers)
+        response = requests.post(url, json=data, headers=headers)
 
-        if res.status_code == 200:
-            with open(filename, "wb") as f:
-                f.write(res.content)
-            return True
+        if response.status_code != 200:
+            print("Eleven error:", response.text)
+            return None
 
-        return False
+        with open(filename, "wb") as f:
+            f.write(response.content)
 
-    except Exception as e:
-        print("ElevenLabs error:", e)
-        return False
-
-
-# ================= GTTS FALLBACK =================
-
-def gtts_tts(text, filename):
-    try:
-        tts = gTTS(
-            text=text,
-            lang="en",  # Hinglish best
-            slow=False
-        )
-        tts.save(filename)
-        return True
-    except Exception as e:
-        print("gTTS error:", e)
-        return False
-
-
-# ================= MAIN FUNCTION =================
-
-def text_to_voice(text, user_id):
-    try:
-        filename = f"voice_{user_id}_{uuid.uuid4().hex[:6]}.mp3"
-
-        text = clean_text(text)
-        text = apply_style(text)
-
-        # 🔥 Try ElevenLabs first
-        if ELEVENLABS_API_KEY and VOICE_ID:
-            success = elevenlabs_tts(text, filename)
-            if success:
-                return filename
-
-        # 🔥 fallback to gTTS
-        if gtts_tts(text, filename):
-            return filename
-
-        return None
+        return filename
 
     except Exception as e:
         print("Voice error:", e)
         return None
 
 
-# ================= CLEANUP =================
+# ================= DELETE =================
 
 def delete_voice(file_path):
     try:
