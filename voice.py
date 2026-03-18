@@ -13,8 +13,13 @@ def clean_text(text):
     if not text:
         return ""
 
+    # remove emojis / symbols
     text = re.sub(r"[^\w\s,.?!]", "", text)
+
+    # fix dots
     text = re.sub(r"\.{2,}", ".", text)
+
+    # remove extra spaces
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
@@ -25,11 +30,9 @@ def clean_text(text):
 def naturalize_text(text):
     text = text.strip()
 
-    # remove robotic patterns
     text = text.replace("..", ".")
     text = text.replace("...", ".")
 
-    # natural pauses
     text = text.replace("?", " ?")
     text = text.replace("!", ".")
 
@@ -42,11 +45,11 @@ def naturalize_text(text):
 # ================= VOICE SELECT =================
 
 def get_voice():
-    # 🔥 Hinglish + Hindi best combo
+    # 🔥 BEST Hinglish female
     return "en-IN-NeerjaNeural"
 
 
-# ================= ASYNC CORE =================
+# ================= ASYNC =================
 
 async def text_to_voice_async(text, user_id):
     try:
@@ -61,8 +64,8 @@ async def text_to_voice_async(text, user_id):
         communicate = edge_tts.Communicate(
             text=text,
             voice=get_voice(),
-            rate="+8%",     # 🔥 speed natural
-            pitch="+2Hz"    # 🔥 soft female tone
+            rate="+8%",
+            pitch="+2Hz"
         )
 
         await communicate.save(filename)
@@ -80,7 +83,6 @@ def text_to_voice(text, user_id):
     try:
         return asyncio.run(text_to_voice_async(text, user_id))
     except RuntimeError:
-        # fallback if loop already running
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(text_to_voice_async(text, user_id))
 
