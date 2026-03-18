@@ -21,12 +21,21 @@ def detect_type(text):
         return "normal"
 
 
-# ================= TIME GAP =================
+# ================= SAFE TIME GAP =================
 
 def get_gap(last_time):
-    if not last_time:
+    try:
+        if not last_time:
+            return 0
+
+        # 🔥 fix: string → int
+        if isinstance(last_time, str):
+            last_time = int(last_time)
+
+        return int(time.time()) - last_time
+
+    except:
         return 0
-    return int(time.time()) - last_time
 
 
 # ================= MAIN AI =================
@@ -62,16 +71,14 @@ async def generate_reply(user_id, name, text):
         else:
             mood = "calm neutral"
 
-        # ================= COMEBACK LOGIC =================
+        # ================= COMEBACK =================
 
-        comeback_line = ""
-
-        if gap > 86400:  # 1 day
-            comeback_line = "user came after long time, react slightly like you noticed"
-        elif gap > 21600:  # 6 hours
-            comeback_line = "user was inactive, show mild attitude or curiosity"
-        elif gap > 3600:  # 1 hour
-            comeback_line = "user was away for a while, soft tone"
+        if gap > 86400:
+            comeback_line = "user came after long time, react like you noticed"
+        elif gap > 21600:
+            comeback_line = "user was inactive, slight attitude"
+        elif gap > 3600:
+            comeback_line = "user was away, soft tone"
         else:
             comeback_line = "normal flow"
 
@@ -79,7 +86,7 @@ async def generate_reply(user_id, name, text):
 
         memory_context = "\n".join(history[-5:])
 
-        # ================= SYSTEM PROMPT =================
+        # ================= PROMPT =================
 
         system_prompt = f"""
 You are a real girl chatting on Telegram.
@@ -96,17 +103,12 @@ PERSONALITY:
 - seductive only if user initiates
 - {mood}
 
-COMEBACK BEHAVIOR:
+COMEBACK:
 - {comeback_line}
-
-OBSESSION:
-- Make user feel noticed
-- Slight emotional pull
-- Never overdo
 
 BEHAVIOR:
 - Flirty → flirty
-- Question → correct answer
+- Question → clear answer
 - Dry → short reply
 - Normal → natural
 
@@ -138,11 +140,19 @@ Message: {text}
             "max_tokens": 80
         }
 
+        # ================= API CALL SAFE =================
+
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
                 result = await res.json()
 
-        reply = result["choices"][0]["message"]["content"].strip()
+        # 🔥 safe response
+        reply = result.get("choices", [{}])[0].get("message", {}).get("content")
+
+        if not reply:
+            return "hmm… samajh nahi aaya"
+
+        reply = reply.strip()
 
         # ================= SAVE =================
 
@@ -153,7 +163,12 @@ Message: {text}
                     "attachment": attachment,
                     "last_seen": now
                 },
-                "$push": {"history": text}
+                "$push": {
+                    "history": {
+                        "$each": [text],
+                        "$slice": -10  # 🔥 limit history
+                    }
+                }
             },
             upsert=True
         )
@@ -162,7 +177,7 @@ Message: {text}
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "samajh nahi aaya… phir se bolo"
+        return "phir se bolo… clear nahi hua"
 
 
 # ================= TAGALL =================
@@ -181,9 +196,6 @@ Rules:
 - max 8 words
 - emotional or slight tease
 - natural
-
-Example:
-Rahul group bhool gaye kya
 """
 
         data = {
@@ -199,7 +211,7 @@ Rahul group bhool gaye kya
             async with session.post(API_URL, headers=headers, json=data) as res:
                 result = await res.json()
 
-        return result["choices"][0]["message"]["content"].strip()
+        return result.get("choices", [{}])[0].get("message", {}).get("content", f"{name} kaha ho").strip()
 
     except:
         return f"{name} group bhool gaye kya"
