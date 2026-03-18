@@ -1,14 +1,15 @@
 import asyncio
 import random
 import string
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TimedOut
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters
 )
@@ -18,7 +19,7 @@ from database import users, tokens
 from ai import generate_reply, detect_emotion, generate_tag_message
 
 
-# ---------------- GENDER DETECT ----------------
+# ---------------- GENDER ----------------
 
 def detect_gender(name):
     name = name.lower()
@@ -35,15 +36,14 @@ def detect_gender(name):
 
 def save_user(update):
     user = update.message.from_user
-    name = user.first_name
 
     users.update_one(
         {"user_id": user.id},
         {
             "$set": {
                 "username": user.username,
-                "name": name,
-                "gender": detect_gender(name),
+                "name": user.first_name,
+                "gender": detect_gender(user.first_name),
                 "last_active": datetime.utcnow()
             },
             "$inc": {"messages": 1}
@@ -112,6 +112,49 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Premium unlocked 💎")
 
 
+# ---------------- START (BUTTON UI) ----------------
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("💘 Chat AI", callback_data="chat")],
+        [InlineKeyboardButton("🎟 Redeem Token", callback_data="redeem")],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
+        [InlineKeyboardButton("👥 Tag All", callback_data="tagall")],
+        [InlineKeyboardButton("💰 Buy Premium", callback_data="premium")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "Acha… tum aa gaye 😏",
+        reply_markup=reply_markup
+    )
+
+
+# ---------------- BUTTON HANDLER ----------------
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "chat":
+        await query.message.reply_text("Mujhse baat karo na 😏")
+
+    elif data == "redeem":
+        await query.message.reply_text("Token bhejo 😌 → /redeem CODE")
+
+    elif data == "leaderboard":
+        await leaderboard(update, context)
+
+    elif data == "tagall":
+        await tagall(update, context)
+
+    elif data == "premium":
+        await query.message.reply_text("Premium chahiye? Owner se token lo 😏")
+
+
 # ---------------- TAGALL ----------------
 
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +203,7 @@ async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_send(context, update.effective_chat.id, msg)
 
 
-# ---------------- AUTO REVIVE ----------------
+# ---------------- AUTO MESSAGE ----------------
 
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     while True:
@@ -184,7 +227,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print("AUTO ERROR:", e)
 
-        await asyncio.sleep(7200)  # 2 hours
+        await asyncio.sleep(7200)
 
 
 # ---------------- MESSAGE ----------------
@@ -219,13 +262,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = users.find_one({"user_id": user_id}) or {}
         is_premium = user_data.get("premium", False)
 
-        # 🔒 FREE LIMIT
-        if not is_premium:
-            if user_data.get("messages", 0) > 30:
-                await safe_send(context, update.effective_chat.id, "Free limit khatam 😏 /redeem karo")
-                return
+        if not is_premium and user_data.get("messages", 0) > 30:
+            await safe_send(context, update.effective_chat.id, "Free limit khatam 😏 /redeem karo")
+            return
 
-        # emotion
         emotion = await detect_emotion(text)
 
         users.update_one(
@@ -249,17 +289,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # store group id (IMPORTANT)
-    app.bot_data["group_id"] = -100XXXXXXXXXX  # 🔥 PUT YOUR GROUP ID HERE
+    # 🔥 PUT YOUR GROUP ID HERE
+    app.bot_data["group_id"] = -100XXXXXXXXXX
 
-    # commands
+    # handlers
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tagall", tagall))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("database", database_cmd))
     app.add_handler(CommandHandler("gentoken", gen_token))
     app.add_handler(CommandHandler("redeem", redeem))
 
-    # messages
+    app.add_handler(CallbackQueryHandler(button_handler))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # auto task
