@@ -20,7 +20,6 @@ from config import (
     MAX_DELAY,
     PHOTO_CHANCE,
     JEALOUSY_CHANCE,
-    RANDOM_MESSAGE_CHANCE,
     ENABLE_VOICE
 )
 
@@ -227,6 +226,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply = await generate_reply(user.id, user.first_name, text)
 
+    # delay
     delay = random.randint(MIN_DELAY, MAX_DELAY)
 
     for _ in range(max(1, delay // 2)):
@@ -237,24 +237,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-    # STICKER
+    # STICKER (less spam)
     try:
         mood = detect_reply_mood(reply)
         if mood in STICKERS and STICKERS[mood]:
-            if random.randint(1, 100) <= 70:
+            if random.randint(1, 100) <= 50:
                 await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
     except Exception as e:
         print("Sticker error:", e)
 
-    # 🔥 VOICE FIX (IMPORTANT)
+    # VOICE (FINAL FIX)
     if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
         voice_file = text_to_voice(reply, user.id)
+
         if voice_file:
             with open(voice_file, "rb") as v:
-                await update.message.reply_audio(v)  # ✅ FIXED
+                await update.message.reply_voice(v)  # ✅ FIXED
+
             delete_voice(voice_file)
 
-    # RANDOM MESSAGE
+    # RANDOM MESSAGE (low spam)
     if random.randint(1, 100) <= 5:
         await asyncio.sleep(random.randint(10, 20))
         await context.bot.send_message(chat_id, random.choice([
@@ -262,11 +264,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "koi interesting banda hai yaha?",
             "mujhe ignore kar rahe ho kya 😒",
         ]))
-
-    # USER CALLOUT
-    if random.randint(1, 100) <= 10 and members:
-        u = random.choice(members)
-        await context.bot.send_message(chat_id, f"{u['name']}… tum chup kyu ho 😏")
 
 
 # ================= AUTO =================
@@ -278,7 +275,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
             if time.time() - last > 600:
                 continue
 
-            if random.randint(1, 100) > 10:
+            if random.randint(1, 100) > 5:
                 continue
 
             await context.bot.send_message(chat_id, random.choice([
