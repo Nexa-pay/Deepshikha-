@@ -25,10 +25,10 @@ async def save_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
 
     if chat.type in ["group", "supergroup"]:
-        if "groups" not in context.bot_data:
-            context.bot_data["groups"] = set()
+        if "groups" not in context.application.bot_data:
+            context.application.bot_data["groups"] = set()
 
-        context.bot_data["groups"].add(chat.id)
+        context.application.bot_data["groups"].add(chat.id)
 
         print("Saved group:", chat.id)
 
@@ -126,47 +126,36 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Premium unlocked 💎")
 
 
-# ---------------- START (BUTTON UI) ----------------
+# ---------------- START ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💘 Chat AI", callback_data="chat")],
-        [InlineKeyboardButton("🎟 Redeem Token", callback_data="redeem")],
+        [InlineKeyboardButton("🎟 Redeem", callback_data="redeem")],
         [InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")],
-        [InlineKeyboardButton("👥 Tag All", callback_data="tagall")],
-        [InlineKeyboardButton("💰 Premium", callback_data="premium")]
+        [InlineKeyboardButton("👥 Tag All", callback_data="tagall")]
     ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
         "Acha… tum aa gaye 😏",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# ---------------- BUTTON HANDLER ----------------
+# ---------------- BUTTON ----------------
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    data = query.data
-
-    if data == "chat":
-        await query.message.reply_text("Mujhse baat karo na 😏")
-
-    elif data == "redeem":
-        await query.message.reply_text("Token bhejo 😌 → /redeem CODE")
-
-    elif data == "leaderboard":
+    if query.data == "leaderboard":
         await leaderboard(update, context)
 
-    elif data == "tagall":
+    elif query.data == "tagall":
         await tagall(update, context)
 
-    elif data == "premium":
-        await query.message.reply_text("Premium chahiye? Owner se token lo 😏")
+    elif query.data == "redeem":
+        await query.message.reply_text("Use: /redeem CODE")
 
 
 # ---------------- TAGALL ----------------
@@ -195,13 +184,10 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = list(users.find().sort("messages", -1).limit(5))
 
-    msg = "🏆 Top Active Users:\n\n"
+    msg = "🏆 Top Users:\n\n"
 
     for i, user in enumerate(top_users, start=1):
-        name = user.get("name", "User")
-        count = user.get("messages", 0)
-
-        msg += f"{i}. {name} — {count} msgs 🔥\n"
+        msg += f"{i}. {user.get('name')} — {user.get('messages',0)} 🔥\n"
 
     await safe_send(context, update.effective_chat.id, msg)
 
@@ -212,39 +198,38 @@ async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = users.count_documents({})
     premium = users.count_documents({"premium": True})
 
-    msg = f"👥 Users: {total}\n💎 Premium: {premium}"
+    await safe_send(
+        context,
+        update.effective_chat.id,
+        f"👥 Users: {total}\n💎 Premium: {premium}"
+    )
 
-    await safe_send(context, update.effective_chat.id, msg)
 
-
-# ---------------- AUTO MESSAGE (MULTI GROUP) ----------------
+# ---------------- AUTO MESSAGE (FIXED) ----------------
 
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
-    while True:
-        groups = context.bot_data.get("groups", set())
+    groups = context.application.bot_data.get("groups", set())
 
-        for group_id in groups:
-            users_list = list(users.find().limit(5))
+    for group_id in groups:
+        users_list = list(users.find().limit(5))
 
-            for user in users_list:
-                try:
-                    uid = user["user_id"]
-                    name = user.get("name", "User")
+        for user in users_list:
+            try:
+                uid = user["user_id"]
+                name = user.get("name", "User")
 
-                    msg = await generate_tag_message(name)
+                msg = await generate_tag_message(name)
 
-                    text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
+                text = f'<a href="tg://user?id={uid}">{name}</a>, {msg}'
 
-                    await context.bot.send_message(
-                        chat_id=group_id,
-                        text=text,
-                        parse_mode="HTML"
-                    )
+                await context.bot.send_message(
+                    chat_id=group_id,
+                    text=text,
+                    parse_mode="HTML"
+                )
 
-                except Exception as e:
-                    print("AUTO ERROR:", e)
-
-        await asyncio.sleep(7200)
+            except Exception as e:
+                print("AUTO ERROR:", e)
 
 
 # ---------------- MESSAGE ----------------
@@ -276,21 +261,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_user(update)
 
     try:
-        user_data = users.find_one({"user_id": user_id}) or {}
-        is_premium = user_data.get("premium", False)
-
-        if not is_premium and user_data.get("messages", 0) > 30:
-            await safe_send(context, update.effective_chat.id, "Free limit khatam 😏 /redeem karo")
-            return
-
-        emotion = await detect_emotion(text)
-
-        users.update_one(
-            {"user_id": user_id},
-            {"$set": {"emotion": emotion}},
-            upsert=True
-        )
-
         reply = await generate_reply(user_id, text)
 
         final = f'<a href="tg://user?id={user_id}">{name}</a>, {reply}'
@@ -306,9 +276,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # handlers
+    # auto group capture
     app.add_handler(MessageHandler(filters.ALL, save_group), group=0)
 
+    # commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tagall", tagall))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
@@ -316,12 +287,14 @@ def main():
     app.add_handler(CommandHandler("gentoken", gen_token))
     app.add_handler(CommandHandler("redeem", redeem))
 
+    # buttons
     app.add_handler(CallbackQueryHandler(button_handler))
 
+    # messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # auto task
-    app.create_task(auto_message(app))
+    # ✅ FIXED AUTO TASK (NO ERROR)
+    app.job_queue.run_repeating(auto_message, interval=7200, first=10)
 
     print("Bot running...")
     app.run_polling()
