@@ -18,7 +18,6 @@ from config import (
     MIN_DELAY,
     MAX_DELAY,
     PHOTO_CHANCE,
-    STICKER_CHANCE,
     JEALOUSY_CHANCE,
     RANDOM_MESSAGE_CHANCE,
     ENABLE_VOICE
@@ -32,19 +31,44 @@ from database import (
     get_top_users
 )
 
-from ai import generate_reply, get_random_image, should_send_image
+from ai import (
+    generate_reply,
+    get_random_image,
+    should_send_image,
+    detect_reply_mood
+)
+
 from voice import text_to_voice, delete_voice
 
 logging.basicConfig(level=logging.INFO)
 
 
-# ================= STICKERS =================
-STICKERS = {
-    "cute": [],
-    "love": [],
-    "attitude": [],
-    "tease": []
-}
+# ================= STICKER LOADER =================
+def load_stickers():
+    data = {}
+    current = None
+
+    try:
+        with open("stickers/ids.txt") as f:
+            for line in f:
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                if line.startswith("#"):
+                    current = line.replace("#", "").strip()
+                    data[current] = []
+                else:
+                    if current:
+                        data[current].append(line)
+    except:
+        pass
+
+    return data
+
+
+STICKERS = load_stickers()
 
 
 # ================= START =================
@@ -127,14 +151,13 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             failed += 1
 
-    # ✅ only active users
     for u in users.find({"messages": {"$gt": 0}}):
         try:
             await context.bot.send_message(u["user_id"], msg)
             sent += 1
         except:
             failed += 1
-            users.delete_one({"user_id": u["user_id"]})  # 🔥 cleanup
+            users.delete_one({"user_id": u["user_id"]})
 
     await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
 
@@ -144,7 +167,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    # 🔥 sticker id getter
+    # sticker id getter
     if update.message.sticker:
         await update.message.reply_text(update.message.sticker.file_id)
         return
@@ -180,12 +203,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("itni jaldi photo? 😏")
         return
-
-    # ================= STICKERS =================
-    if random.randint(1, 100) <= STICKER_CHANCE:
-        mood = random.choice(list(STICKERS.keys()))
-        if STICKERS[mood]:
-            await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
 
     # ================= JEALOUSY =================
     if chat_type in ["group", "supergroup"]:
@@ -225,6 +242,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
+    # ================= AI STICKER =================
+    try:
+        mood = detect_reply_mood(reply)
+
+        if mood in STICKERS and STICKERS[mood]:
+            if random.randint(1, 100) <= 70:
+                await context.bot.send_sticker(
+                    chat_id,
+                    random.choice(STICKERS[mood])
+                )
+    except:
+        pass
+
     # ================= VOICE =================
     if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao"]):
         voice_file = text_to_voice(reply, user.id)
@@ -239,15 +269,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if random.randint(1, 100) <= RANDOM_MESSAGE_CHANCE:
         await asyncio.sleep(random.randint(5, 15))
 
-        msgs = [
+        await context.bot.send_message(chat_id, random.choice([
             "sab itne chup kyun hai",
             "koi interesting banda hai yaha?",
             "mujhe ignore kar rahe ho kya 😒",
-        ]
+        ]))
 
-        await context.bot.send_message(chat_id, random.choice(msgs))
-
-    # ================= USER CALLOUT (🔥 GROWTH) =================
+    # ================= USER CALLOUT =================
     if random.randint(1, 100) <= 10 and members:
         u = random.choice(members)
         await context.bot.send_message(chat_id, f"{u['name']}… tum chup kyu ho 😏")
@@ -273,8 +301,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("broadcast", broadcast))
-    app.add_handler(CommandHandler("database", database_cmd))     # 🔥 FIX
-    app.add_handler(CommandHandler("leaderboard", leaderboard))   # 🔥 FIX
+    app.add_handler(CommandHandler("database", database_cmd))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
 
     app.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
