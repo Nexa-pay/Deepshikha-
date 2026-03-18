@@ -14,7 +14,7 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ================= IMAGE SYSTEM =================
+# ================= IMAGE =================
 
 IMAGE_URLS = [
     "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
@@ -22,99 +22,72 @@ IMAGE_URLS = [
 
 
 def should_send_image(text):
-    triggers = ["photo", "pic", "selfie", "send pic", "image"]
-    return any(t in text.lower() for t in triggers)
+    return any(x in text.lower() for x in ["photo", "pic", "selfie", "image"])
 
 
 def get_random_image():
     return random.choice(IMAGE_URLS)
 
 
-# ================= REPLY → MOOD =================
+# ================= MOOD =================
 
 def detect_reply_mood(reply):
     r = reply.lower()
 
-    if any(x in r for x in ["miss", "love", "jaan"]):
+    if any(x in r for x in ["love", "miss", "baby", "jaan"]):
         return "love"
 
-    if any(x in r for x in ["sad", "alone", "hurt"]):
+    if any(x in r for x in ["sad", "cry", "alone", "hurt"]):
         return "cry"
 
-    if any(x in r for x in ["kiss"]):
+    if any(x in r for x in ["kiss", "mwah"]):
         return "kiss"
 
-    if any(x in r for x in ["angry", "ignore", "attitude"]):
+    if any(x in r for x in ["angry", "attitude", "ignore"]):
         return "angry"
 
-    if any(x in r for x in ["haha", "lol"]):
-        return "cute"
-
-    return "cute"
+    return random.choice(["cute", "love"])
 
 
-# ================= INTENSITY =================
-
-def detect_intensity(reply):
-    r = reply.lower()
-
-    if any(x in r for x in ["bohot", "bahut", "so much", "really", "very"]):
-        return "intense"
-
-    return "light"
-
-
-# ================= MESSAGE TYPE =================
+# ================= TYPE =================
 
 def detect_type(text):
-    text = text.lower()
+    t = text.lower()
 
-    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
+    if any(x in t for x in ["love", "miss", "baby", "jaan"]):
         return "flirty"
-    elif any(x in text for x in ["why", "what", "who", "kaise", "kya"]):
+
+    if any(x in t for x in ["why", "what", "kaise", "kya"]):
         return "question"
-    elif len(text.split()) <= 2:
+
+    if len(t.split()) <= 2:
         return "dry"
-    else:
-        return "normal"
+
+    return "normal"
 
 
-# ================= PERSONALITY =================
+# ================= SECRET MEMORY =================
 
-def analyze_user(text):
+def extract_secrets(text):
     text = text.lower()
+    secrets = []
 
-    personality = "normal"
-    topics = []
+    if len(text.split()) < 4:
+        return secrets
 
-    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
-        personality = "flirty"
-        topics.append("love")
+    if any(x in text for x in ["gf", "bf", "breakup"]):
+        secrets.append({"type": "relationship", "value": text})
 
-    elif any(x in text for x in ["sad", "alone", "hurt"]):
-        personality = "emotional"
-        topics.append("emotions")
+    if any(x in text for x in ["sad", "alone", "hurt"]):
+        secrets.append({"type": "emotion", "value": text})
 
-    elif any(x in text for x in ["money", "earn", "business"]):
-        topics.append("money")
+    if any(x in text for x in ["i like", "mujhe pasand"]):
+        secrets.append({"type": "like", "value": text})
 
-    elif len(text.split()) <= 2:
-        personality = "dry"
+    if any(x in text for x in ["exam", "job", "college"]):
+        secrets.append({"type": "life", "value": text})
 
-    return personality, topics
-
-
-# ================= TIME GAP =================
-
-def get_gap(last_time):
-    try:
-        if not last_time:
-            return 0
-        if isinstance(last_time, str):
-            last_time = int(last_time)
-        return int(time.time()) - last_time
-    except:
-        return 0
+    return secrets
 
 
 # ================= MAIN AI =================
@@ -123,77 +96,93 @@ async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
 
-        # 🔥 OWNER PROTECTION
+        # 🔒 OWNER PROTECTION
         if "owner" in text_lower:
             return random.choice([
                 "owner ka kya karoge 😏",
-                "main hu na… owner chhodo 😌",
-                "itni curiosity kyun hai 😏"
+                "main hu na… owner chhodo 😌"
             ])
 
-        # 🔥 NAME FIX (NO AI GUESS)
+        # 🔒 NAME LOCK
         if any(x in text_lower for x in ["mera naam", "my name", "what is my name"]):
             return f"tumhara naam {name} hai 😏"
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
-        attachment = user_data.get("attachment", 0)
-        relationship = user_data.get("relationship", 0)
-        ignore_count = user_data.get("ignore_count", 0)
-
         history = user_data.get("history", [])
+        secrets = user_data.get("secrets", [])
+        relationship = user_data.get("relationship", 0)
+        attachment = user_data.get("attachment", 0)
+        ignore_count = user_data.get("ignore_count", 0)
         last_seen = user_data.get("last_seen")
 
-        personality_data = user_data.get("personality", {})
-        fav_data = user_data.get("favorites", {})
-
         now = int(time.time())
-        gap = get_gap(last_seen)
+        gap = now - last_seen if last_seen else 0
 
         msg_type = detect_type(text)
-        personality, topics = analyze_user(text)
 
-        # ================= RELATIONSHIP =================
+        # ================= RELATIONSHIP ENGINE =================
 
         if msg_type == "flirty":
-            attachment += 5
-            relationship += 5
+            attachment += 6
+            relationship += 6
+
+        elif msg_type == "question":
+            attachment += 3
+            relationship += 2
+
         elif msg_type == "dry":
             attachment += 1
             relationship += 1
             ignore_count += 1
+
         else:
             attachment += 2
             relationship += 2
 
+        # decay
+        if gap > 3600:
+            relationship -= 2
+
+        if gap > 21600:
+            relationship -= 5
+
+        relationship = max(0, min(200, relationship))
+
         # ================= MOOD =================
 
-        if relationship > 100:
-            mood = "emotionally attached, slightly possessive"
+        if relationship > 140:
+            mood = "deeply attached, slightly possessive"
+
+        elif relationship > 90:
+            mood = "flirty and warm"
+
         elif relationship > 50:
-            mood = "soft flirty, interested"
+            mood = "friendly with teasing"
+
         else:
-            mood = "calm neutral"
+            mood = "neutral playful"
 
-        # ================= COMEBACK =================
+        # ================= SECRETS =================
 
-        if gap > 86400:
-            comeback = "you noticed they were gone and missed them slightly"
-        elif gap > 21600:
-            comeback = "you noticed absence, slight attitude"
-        elif gap > 3600:
-            comeback = "soft warm comeback"
-        else:
-            comeback = "normal flow"
+        new_secrets = extract_secrets(text)
 
-        # ================= POSSESSIVE =================
+        if new_secrets:
+            users.update_one(
+                {"user_id": user_id},
+                {
+                    "$push": {
+                        "secrets": {
+                            "$each": new_secrets,
+                            "$slice": -20
+                        }
+                    }
+                }
+            )
 
-        possessive_hint = ""
-
-        if relationship > 80 and msg_type == "flirty":
-            possessive_hint = "slight possessive teasing tone"
-        elif ignore_count > 5:
-            possessive_hint = "feels ignored, mild attitude"
+        secret_text = ""
+        for s in secrets[-5:]:
+            secret_text += f"- {s.get('type')}: {s.get('value')}\n"
 
         # ================= SYSTEM PROMPT =================
 
@@ -202,38 +191,35 @@ You are a real girl chatting on Telegram.
 
 STRICT RULES:
 - User name is {name}
-- NEVER change name
-- NEVER guess name
+- NEVER change or guess name
 - NEVER reveal owner
-
-Reply Style:
-- 1 short line
-- Hinglish only
-- natural human tone
 
 Personality:
 - calm, confident
 - slightly flirty
 - {mood}
 
+Memory:
+{secret_text}
+
 Behavior:
 - remembers chats
 - reacts to absence
-- slight attitude if ignored
+- natural tone
 
-Comeback: {comeback}
-Tone: {possessive_hint}
+Reply style:
+- 1 short line
+- Hinglish only
 """
-
-        # ================= BUILD HISTORY =================
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-15:]:
-            if h.startswith("User:"):
-                messages.append({"role": "user", "content": h[6:]})
-            elif h.startswith("Bot:"):
-                messages.append({"role": "assistant", "content": h[5:]})
+        # structured history
+        for h in history[-20:]:
+            if h.get("role") == "user":
+                messages.append({"role": "user", "content": h.get("text")})
+            elif h.get("role") == "bot":
+                messages.append({"role": "assistant", "content": h.get("text")})
 
         messages.append({"role": "user", "content": text})
 
@@ -258,11 +244,7 @@ Tone: {possessive_hint}
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            reply = random.choice([
-                "samajh nahi aaya 😏",
-                "thoda clearly bolo 😌",
-                "hmm… repeat karo 😏"
-            ])
+            reply = "samajh nahi aaya 😌"
 
         reply = reply.strip()
 
@@ -275,19 +257,15 @@ Tone: {possessive_hint}
                     "attachment": attachment,
                     "relationship": relationship,
                     "ignore_count": ignore_count,
-                    "last_seen": now,
-                    "personality.type": personality
-                },
-                "$addToSet": {
-                    "favorites.topics": {"$each": topics}
+                    "last_seen": now
                 },
                 "$push": {
                     "history": {
                         "$each": [
-                            f"User: {text}",
-                            f"Bot: {reply}"
+                            {"role": "user", "text": text},
+                            {"role": "bot", "text": reply}
                         ],
-                        "$slice": -25
+                        "$slice": -40
                     }
                 }
             },
