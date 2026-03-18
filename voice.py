@@ -13,34 +13,55 @@ from config import (
 # ================= CLEAN TEXT =================
 
 def clean_text(text):
+    if not text:
+        return ""
+
+    # remove emojis & symbols
     text = re.sub(r"[^\w\s,.?!]", "", text)
 
-    if len(text) > 200:
-        text = text[:200]
+    # remove multiple dots
+    text = re.sub(r"\.{2,}", ".", text)
+
+    # remove extra spaces
+    text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# ================= HINGLISH BOOST =================
+# ================= HINGLISH NATURALIZER =================
 
-def style_text(text):
+def naturalize_text(text):
+    text = text.strip()
+
+    # 🔥 remove robotic endings
+    text = text.replace("..", ".")
+    text = text.replace("...", ".")
+
+    # 🔥 soft conversational tweaks
+    text = text.replace("?", " ?")
+    text = text.replace("!", ".")
+
+    # 🔥 small pause (natural)
     if VOICE_STYLE == "soft":
-        # 🔥 natural pauses
-        text = text.replace(",", "...")
-        text = text + "..."
+        text = text.replace(",", ".")
 
     return text
 
 
-# ================= ELEVEN VOICE =================
+# ================= MAIN VOICE =================
 
 def text_to_voice(text, user_id):
     try:
         if not ELEVENLABS_API_KEY:
             return None
 
+        # 🔥 CLEAN FLOW
         text = clean_text(text)
-        text = style_text(text)
+        text = naturalize_text(text)
+
+        # 🔥 limit size (important)
+        if len(text) > 250:
+            text = text[:250]
 
         filename = f"voice_{user_id}_{uuid.uuid4().hex[:6]}.mp3"
 
@@ -55,11 +76,11 @@ def text_to_voice(text, user_id):
             "text": text,
             "model_id": VOICE_MODEL,
 
-            # 🔥 MAGIC SETTINGS (REALISTIC)
+            # 🔥 PERFECT BALANCE (tested)
             "voice_settings": {
-                "stability": 0.35,        # 🔥 less robotic
-                "similarity_boost": 0.85,
-                "style": 0.7,             # 🔥 more expressive
+                "stability": 0.28,          # 🔥 less robotic
+                "similarity_boost": 0.9,
+                "style": 0.65,              # 🔥 natural emotion
                 "use_speaker_boost": True
             }
         }
