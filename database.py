@@ -3,6 +3,7 @@ import time
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
 
+
 # ================= CONNECTION =================
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -46,7 +47,7 @@ def update_user(user_id, name):
             {
                 "$setOnInsert": {
                     "user_id": user_id,
-                    "messages": 0,  # ⚠️ only here
+                    "messages": 0,  # ✅ only here
                     "last_seen": now,
                     "attachment": 0,
                     "relationship": 0,
@@ -71,7 +72,7 @@ def update_user(user_id, name):
                 },
 
                 "$inc": {
-                    "messages": 1  # ✅ ONLY HERE → conflict fix
+                    "messages": 1  # ✅ conflict-free
                 }
             },
             upsert=True
@@ -166,7 +167,7 @@ def give_vip(user_id, days=30):
 
 def is_vip_user(user):
     try:
-        return user.get("is_vip") and user.get("vip_expiry", 0) > time.time()
+        return bool(user and user.get("is_vip") and user.get("vip_expiry", 0) > time.time())
     except:
         return False
 
@@ -208,6 +209,30 @@ def has_access(user):
     except Exception as e:
         print("Access error:", e)
         return False
+
+
+# ================= REFERRAL SYSTEM =================
+
+def add_referral(new_user_id, referrer_id):
+    try:
+        if new_user_id == referrer_id:
+            return
+
+        users.update_one(
+            {"user_id": new_user_id},
+            {"$set": {"ref_by": referrer_id}},
+            upsert=True
+        )
+
+        users.update_one(
+            {"user_id": referrer_id},
+            {
+                "$inc": {"ref_count": 1, "tokens": 5}
+            }
+        )
+
+    except Exception as e:
+        print("Referral error:", e)
 
 
 # ================= LEADERBOARD =================
