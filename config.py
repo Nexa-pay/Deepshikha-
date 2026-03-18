@@ -1,10 +1,20 @@
 import os
 
-# ================= CORE API KEYS =================
+# ================= SAFE ENV GET =================
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-MONGO_URI = os.getenv("MONGO_URI")
+def get_env(key, default=None, cast=str):
+    value = os.getenv(key, default)
+    try:
+        return cast(value)
+    except:
+        return default
+
+
+# ================= CORE =================
+
+OPENROUTER_API_KEY = get_env("OPENROUTER_API_KEY")
+BOT_TOKEN = get_env("BOT_TOKEN")
+MONGO_URI = get_env("MONGO_URI")
 
 if not OPENROUTER_API_KEY:
     raise ValueError("❌ OPENROUTER_API_KEY missing")
@@ -18,72 +28,61 @@ if not MONGO_URI:
 
 # ================= OWNER =================
 
-try:
-    OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
-except:
-    OWNER_ID = 123456789
+OWNER_ID = get_env("OWNER_ID", 123456789, int)
 
 
-# ================= AI MODEL CONFIG =================
+# ================= AI CONFIG =================
 
-MODEL = os.getenv("MODEL", "deepseek/deepseek-chat")
+MODEL = get_env("MODEL", "deepseek/deepseek-chat")
 
-try:
-    TEMPERATURE = float(os.getenv("TEMPERATURE", 0.7))
-except:
-    TEMPERATURE = 0.7
+TEMPERATURE = get_env("TEMPERATURE", 0.75, float)
+MAX_TOKENS = get_env("MAX_TOKENS", 80, int)
 
-try:
-    MAX_TOKENS = int(os.getenv("MAX_TOKENS", 80))
-except:
-    MAX_TOKENS = 80
+# reply creativity control
+CREATIVITY_MODE = get_env("CREATIVITY_MODE", "balanced")  
+# options: low / balanced / high
 
 
 # ================= HUMAN BEHAVIOR =================
 
-try:
-    MIN_DELAY = int(os.getenv("MIN_DELAY", 2))
-    MAX_DELAY = int(os.getenv("MAX_DELAY", 6))
-except:
-    MIN_DELAY = 2
-    MAX_DELAY = 6
+MIN_DELAY = get_env("MIN_DELAY", 2, int)
+MAX_DELAY = get_env("MAX_DELAY", 6, int)
 
-# typing probability (future use 🔥)
-try:
-    TYPING_PROBABILITY = int(os.getenv("TYPING_PROBABILITY", 100))
-except:
-    TYPING_PROBABILITY = 100
+TYPING_PROBABILITY = get_env("TYPING_PROBABILITY", 100, int)
 
 
 # ================= AUTO SYSTEM =================
 
-try:
-    AUTO_MESSAGE_INTERVAL = int(os.getenv("AUTO_MESSAGE_INTERVAL", 1800))
-except:
-    AUTO_MESSAGE_INTERVAL = 1800
+AUTO_MESSAGE_INTERVAL = get_env("AUTO_MESSAGE_INTERVAL", 1800, int)
 
 
-# ================= EMOTIONAL SYSTEM (🔥 CONTROL PANEL) =================
+# ================= EMOTIONAL CONTROL =================
 
-try:
-    JEALOUSY_CHANCE = int(os.getenv("JEALOUSY_CHANCE", 12))
-except:
-    JEALOUSY_CHANCE = 12
+JEALOUSY_CHANCE = get_env("JEALOUSY_CHANCE", 12, int)
+RANDOM_MESSAGE_CHANCE = get_env("RANDOM_MESSAGE_CHANCE", 8, int)
+ATTACHMENT_GAIN = get_env("ATTACHMENT_GAIN", 2, int)
 
-try:
-    RANDOM_MESSAGE_CHANCE = int(os.getenv("RANDOM_MESSAGE_CHANCE", 8))
-except:
-    RANDOM_MESSAGE_CHANCE = 8
+# 🔥 new controls
+POSSESSIVE_THRESHOLD = get_env("POSSESSIVE_THRESHOLD", 80, int)
+LOVE_THRESHOLD = get_env("LOVE_THRESHOLD", 120, int)
 
-try:
-    ATTACHMENT_GAIN = int(os.getenv("ATTACHMENT_GAIN", 2))
-except:
-    ATTACHMENT_GAIN = 2
+
+# ================= MEDIA CONTROL =================
+
+PHOTO_CHANCE = get_env("PHOTO_CHANCE", 50, int)
+STICKER_CHANCE = get_env("STICKER_CHANCE", 6, int)
+
+
+# ================= FEATURE TOGGLES =================
+
+ENABLE_VOICE = get_env("ENABLE_VOICE", "False").lower() == "true"
+ENABLE_STICKERS = get_env("ENABLE_STICKERS", "True").lower() == "true"
+ENABLE_IMAGES = get_env("ENABLE_IMAGES", "True").lower() == "true"
 
 
 # ================= DEBUG =================
 
-DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+DEBUG = get_env("DEBUG", "False").lower() == "true"
 
 if DEBUG:
     print("⚙️ DEBUG MODE ENABLED")
