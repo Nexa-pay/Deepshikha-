@@ -21,7 +21,7 @@ def detect_type(text):
         return "normal"
 
 
-# ================= PERSONALITY DETECT =================
+# ================= PERSONALITY =================
 
 def analyze_user(text):
     text = text.lower()
@@ -46,18 +46,15 @@ def analyze_user(text):
     return personality, topics
 
 
-# ================= SAFE TIME GAP =================
+# ================= TIME GAP =================
 
 def get_gap(last_time):
     try:
         if not last_time:
             return 0
-
         if isinstance(last_time, str):
             last_time = int(last_time)
-
         return int(time.time()) - last_time
-
     except:
         return 0
 
@@ -69,6 +66,9 @@ async def generate_reply(user_id, name, text):
         user_data = users.find_one({"user_id": user_id}) or {}
 
         attachment = user_data.get("attachment", 0)
+        relationship = user_data.get("relationship", 0)
+        ignore_count = user_data.get("ignore_count", 0)
+
         history = user_data.get("history", [])
         last_seen = user_data.get("last_seen")
 
@@ -81,20 +81,24 @@ async def generate_reply(user_id, name, text):
         msg_type = detect_type(text)
         personality, topics = analyze_user(text)
 
-        # ================= ATTACHMENT =================
+        # ================= RELATIONSHIP SYSTEM =================
 
         if msg_type == "flirty":
             attachment += 5
+            relationship += 5
         elif msg_type == "dry":
             attachment += 1
+            relationship += 1
+            ignore_count += 1
         else:
             attachment += 2
+            relationship += 2
 
         # ================= MOOD =================
 
-        if attachment > 80:
-            mood = "emotionally attached, slightly possessive, subtle jealousy"
-        elif attachment > 40:
+        if relationship > 100:
+            mood = "emotionally attached, slightly possessive"
+        elif relationship > 50:
             mood = "soft flirty, interested"
         else:
             mood = "calm neutral"
@@ -110,9 +114,18 @@ async def generate_reply(user_id, name, text):
         else:
             comeback = "normal flow"
 
+        # ================= POSSESSIVE TRIGGER =================
+
+        possessive_hint = ""
+
+        if relationship > 80 and msg_type == "flirty":
+            possessive_hint = "add slight possessive teasing tone"
+        elif ignore_count > 5:
+            possessive_hint = "show mild attitude, feels ignored"
+
         # ================= MEMORY =================
 
-        memory_context = "\n".join(history[-6:])
+        memory_context = "\n".join(history[-10:])
         user_type = personality_data.get("type", "normal")
         fav_topics = ", ".join(fav_data.get("topics", []))
 
@@ -137,13 +150,17 @@ USER PROFILE:
 - Personality: {user_type}
 - Favorite topics: {fav_topics}
 
+EMOTIONAL MEMORY:
+- You remember past chats
+- If user ignores → slight attitude
+- If user returns → react like you noticed
+- If user is consistent → feel closer
+
 COMEBACK:
 - {comeback}
 
-OBSESSION:
-- Make user feel noticed
-- Slight emotional pull
-- Do not overdo
+POSSESSIVE:
+- {possessive_hint}
 
 IMPORTANT:
 - No cringe
@@ -151,7 +168,7 @@ IMPORTANT:
 - No emoji spam
 - No unnecessary humor
 
-Conversation:
+Conversation History (very important, continue naturally):
 {memory_context}
 
 User: {name}
@@ -184,13 +201,15 @@ Message: {text}
 
         reply = reply.strip()
 
-        # ================= SAVE (FIXED 🔥) =================
+        # ================= SAVE =================
 
         users.update_one(
             {"user_id": user_id},
             {
                 "$set": {
                     "attachment": attachment,
+                    "relationship": relationship,
+                    "ignore_count": ignore_count,
                     "last_seen": now,
                     "personality.type": personality
                 },
@@ -203,7 +222,7 @@ Message: {text}
                             f"User: {text}",
                             f"Bot: {reply}"
                         ],
-                        "$slice": -12
+                        "$slice": -15
                     }
                 }
             },
