@@ -3,11 +3,23 @@ import os
 # ================= SAFE ENV GET =================
 
 def get_env(key, default=None, cast=str):
-    value = os.getenv(key, default)
+    value = os.getenv(key)
+
+    if value is None:
+        return default
+
     try:
         return cast(value)
     except:
         return default
+
+
+# 🔥 BOOLEAN PARSER (FIX)
+def get_bool(key, default=False):
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.lower() in ["true", "1", "yes", "on"]
 
 
 # ================= CORE =================
@@ -15,7 +27,7 @@ def get_env(key, default=None, cast=str):
 OPENROUTER_API_KEY = get_env("OPENROUTER_API_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
 MONGO_URI = get_env("MONGO_URI")
-ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")  # 🔥 NEW
+ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY")  # optional
 
 if not OPENROUTER_API_KEY:
     raise ValueError("❌ OPENROUTER_API_KEY missing")
@@ -53,6 +65,7 @@ TYPING_PROBABILITY = get_env("TYPING_PROBABILITY", 100, int)
 # ================= AUTO SYSTEM =================
 
 AUTO_MESSAGE_INTERVAL = get_env("AUTO_MESSAGE_INTERVAL", 1800, int)
+AUTO_MESSAGE_CHANCE = get_env("AUTO_MESSAGE_CHANCE", 10, int)  # 🔥 NEW
 
 
 # ================= EMOTIONAL CONTROL =================
@@ -73,24 +86,27 @@ STICKER_CHANCE = get_env("STICKER_CHANCE", 6, int)
 
 # ================= VOICE CONFIG =================
 
-VOICE_ID = get_env("VOICE_ID", "Rachel")  # 🔥 female voice
+VOICE_ID = get_env("VOICE_ID", "Rachel")
 VOICE_MODEL = get_env("VOICE_MODEL", "eleven_multilingual_v2")
 
-# whisper / tone control
-VOICE_STYLE = get_env("VOICE_STYLE", "soft")  
-# options: soft / normal
+VOICE_STYLE = get_env("VOICE_STYLE", "soft")  # soft / normal
 
 
 # ================= FEATURE TOGGLES =================
 
-ENABLE_VOICE = get_env("ENABLE_VOICE", "True").lower() == "true"
-ENABLE_STICKERS = get_env("ENABLE_STICKERS", "True").lower() == "true"
-ENABLE_IMAGES = get_env("ENABLE_IMAGES", "True").lower() == "true"
+ENABLE_VOICE = get_bool("ENABLE_VOICE", True)
+ENABLE_STICKERS = get_bool("ENABLE_STICKERS", True)
+ENABLE_IMAGES = get_bool("ENABLE_IMAGES", True)
 
 
 # ================= DEBUG =================
 
-DEBUG = get_env("DEBUG", "False").lower() == "true"
+DEBUG = get_bool("DEBUG", False)
 
 if DEBUG:
     print("⚙️ DEBUG MODE ENABLED")
+
+
+# ================= STARTUP LOG =================
+
+print("✅ Config Loaded")
