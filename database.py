@@ -46,7 +46,7 @@ def update_user(user_id, name):
             {
                 "$setOnInsert": {
                     "user_id": user_id,
-                    "messages": 0,
+                    "messages": 0,  # ⚠️ only here
                     "last_seen": now,
                     "attachment": 0,
                     "relationship": 0,
@@ -71,7 +71,7 @@ def update_user(user_id, name):
                 },
 
                 "$inc": {
-                    "messages": 1
+                    "messages": 1  # ✅ ONLY HERE → conflict fix
                 }
             },
             upsert=True
@@ -79,6 +79,15 @@ def update_user(user_id, name):
 
     except Exception as e:
         print("DB update error:", e)
+
+
+# ================= SAFE WRAPPER =================
+
+def safe_update_user(user_id, name):
+    try:
+        update_user(user_id, name)
+    except Exception as e:
+        print("Safe update error:", e)
 
 
 # ================= GROUP =================
@@ -97,27 +106,43 @@ def save_group(chat_id):
 def get_groups():
     try:
         return [g["chat_id"] for g in groups.find({}, {"_id": 0, "chat_id": 1})]
-    except:
+    except Exception as e:
+        print("Group fetch error:", e)
         return []
 
 
 # ================= TOKENS =================
 
 def use_tokens(user_id, amount):
-    user = users.find_one({"user_id": user_id})
+    try:
+        user = users.find_one({"user_id": user_id})
 
-    if not user:
+        if not user:
+            return False
+
+        if user.get("tokens", 0) < amount:
+            return False
+
+        users.update_one(
+            {"user_id": user_id},
+            {"$inc": {"tokens": -amount}}
+        )
+
+        return True
+
+    except Exception as e:
+        print("Token error:", e)
         return False
 
-    if user.get("tokens", 0) < amount:
-        return False
 
-    users.update_one(
-        {"user_id": user_id},
-        {"$inc": {"tokens": -amount}}
-    )
-
-    return True
+def add_tokens(user_id, amount):
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {"$inc": {"tokens": amount}}
+        )
+    except Exception as e:
+        print("Add token error:", e)
 
 
 # ================= VIP =================
@@ -125,19 +150,25 @@ def use_tokens(user_id, amount):
 def give_vip(user_id, days=30):
     expiry = int(time.time()) + (days * 86400)
 
-    users.update_one(
-        {"user_id": user_id},
-        {
-            "$set": {
-                "is_vip": True,
-                "vip_expiry": expiry
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "is_vip": True,
+                    "vip_expiry": expiry
+                }
             }
-        }
-    )
+        )
+    except Exception as e:
+        print("VIP error:", e)
 
 
 def is_vip_user(user):
-    return user.get("is_vip") and user.get("vip_expiry", 0) > time.time()
+    try:
+        return user.get("is_vip") and user.get("vip_expiry", 0) > time.time()
+    except:
+        return False
 
 
 # ================= TRIAL =================
@@ -145,27 +176,38 @@ def is_vip_user(user):
 def give_trial(user_id):
     expiry = int(time.time()) + (30 * 86400)
 
-    users.update_one(
-        {"user_id": user_id},
-        {
-            "$set": {
-                "trial_used": True,
-                "trial_expiry": expiry
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "trial_used": True,
+                    "trial_expiry": expiry
+                }
             }
-        }
-    )
+        )
+    except Exception as e:
+        print("Trial error:", e)
 
 
 def has_access(user):
-    now = time.time()
+    try:
+        now = time.time()
 
-    if user.get("is_vip") and user.get("vip_expiry", 0) > now:
-        return True
+        if not user:
+            return False
 
-    if user.get("trial_expiry", 0) > now:
-        return True
+        if user.get("is_vip") and user.get("vip_expiry", 0) > now:
+            return True
 
-    return False
+        if user.get("trial_expiry", 0) > now:
+            return True
+
+        return False
+
+    except Exception as e:
+        print("Access error:", e)
+        return False
 
 
 # ================= LEADERBOARD =================
@@ -177,5 +219,33 @@ def get_top_users(limit=10):
             .sort("messages", -1)
             .limit(limit)
         )
-    except:
+    except Exception as e:
+        print("Top users error:", e)
         return []
+
+
+# ================= USER =================
+
+def get_user(user_id):
+    try:
+        return users.find_one({"user_id": user_id})
+    except Exception as e:
+        print("Get user error:", e)
+        return None
+
+
+def delete_user(user_id):
+    try:
+        users.delete_one({"user_id": user_id})
+    except Exception as e:
+        print("Delete error:", e)
+
+
+def clear_history(user_id):
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {"$set": {"history": []}}
+        )
+    except Exception as e:
+        print("Clear history error:", e)
