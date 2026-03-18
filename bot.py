@@ -11,7 +11,14 @@ from telegram.ext import (
     filters,
 )
 
-from database import update_user, get_top_users, get_inactive_users, users
+from database import (
+    update_user,
+    get_top_users,
+    get_inactive_users,
+    users,
+    save_group,     # 🔥 NEW (DB)
+    get_groups      # 🔥 NEW (DB)
+)
 from ai import generate_reply, generate_tag_message
 
 # ================= CONFIG =================
@@ -89,7 +96,7 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ================= BROADCAST =================
+# ================= BROADCAST (FIXED 🔥) =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
@@ -102,15 +109,15 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent = 0
 
-    # GROUPS
-    for chat_id in context.application.bot_data.get("groups", []):
+    # 🔥 GROUPS FROM DATABASE (FIXED)
+    for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, msg)
             sent += 1
         except:
             pass
 
-    # USERS
+    # 🔥 USERS
     for u in users.find():
         try:
             await context.bot.send_message(u["user_id"], msg)
@@ -136,18 +143,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username.lower()
     is_reply = update.message.reply_to_message
 
-    # ================= SAVE GROUP =================
     chat_id = update.message.chat_id
-    groups = context.application.bot_data.setdefault("groups", [])
-    if chat_id not in groups:
-        groups.append(chat_id)
 
-    # ================= SAVE MEMBERS =================
+    # 🔥 SAVE GROUP IN DATABASE (PERMANENT FIX)
+    if chat_type in ["group", "supergroup"]:
+        save_group(chat_id)
+
+    # SAVE MEMBERS (RAM)
     members = context.application.bot_data.setdefault("members", [])
     if not any(u["id"] == user.id for u in members):
         members.append({"id": user.id, "name": name})
 
-    # ================= SAVE USER =================
+    # SAVE USER
     update_user(user.id, name)
 
     # ================= QUICK RESPONSES =================
@@ -174,7 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         triggered = True
     elif "@admin" in text_lower:
         triggered = True
-    elif "deepsikha" in text_lower:
+    elif "deepsikha" in text_lower:   # 🔥 FULL WAKE (ANYWHERE)
         triggered = True
 
     if not triggered:
@@ -198,12 +205,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             delay = random.randint(2, 6)
 
-        # typing animation loop (more realistic)
+        # typing effect
         for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(
-                chat_id=chat_id,
-                action="typing"
-            )
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
@@ -218,8 +222,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= AUTO MESSAGE =================
 
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
-    groups = context.application.bot_data.get("groups", [])
-
     msgs = [
         "aaj sab itne chup kyu hai",
         "koi baat karega ya sab busy hai",
@@ -229,7 +231,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
         "main bore ho rahi hu honestly",
     ]
 
-    for chat_id in groups:
+    for chat_id in get_groups():   # 🔥 DB GROUPS
         try:
             await context.bot.send_message(chat_id, random.choice(msgs))
         except:
@@ -254,7 +256,7 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 🔥 Auto message every 30 min
+    # 🔥 AUTO MESSAGE LOOP
     app.job_queue.run_repeating(auto_message, interval=1800, first=60)
 
     print("Bot running... 🚀")
