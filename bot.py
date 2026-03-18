@@ -146,9 +146,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "AAKASH mera creator hai… kaafi special hai wo 😏"
         )
 
-    # ================= WAKE WORD (SHORT ONLY) =================
+    # ================= WAKE WORD =================
     if "deepsikha" in text_lower and len(text.split()) <= 2:
-        return await update.message.reply_text(f"haan {name}… kya hua?")
+        return await update.message.reply_text("haan… kya hua?")
 
     # ================= SMART TRIGGER =================
     triggered = False
@@ -170,7 +170,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ================= AI RESPONSE =================
     reply = await generate_reply(user.id, name, text)
 
-    await update.message.reply_text(f"{name}… {reply}")
+    await update.message.reply_text(reply)
 
 
 # ================= AUTO MESSAGE =================
