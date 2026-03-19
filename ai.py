@@ -34,6 +34,26 @@ def clean_name(name):
     return name if len(name) >= 3 else None
 
 
+# ================= NAME EXTRACT =================
+
+def extract_name(text):
+    text = text.lower()
+
+    patterns = [
+        r"mera naam (\w+)",
+        r"my name is (\w+)",
+        r"i am (\w+)",
+        r"main (\w+) hu"
+    ]
+
+    for p in patterns:
+        match = re.search(p, text)
+        if match:
+            return clean_name(match.group(1))
+
+    return None
+
+
 # ================= IMAGE =================
 
 IMAGE_URLS = [
@@ -109,7 +129,7 @@ def fix_tone(reply):
     return reply
 
 
-# ================= SHORT CONTROL =================
+# ================= SHORT =================
 
 def smart_short(reply):
     reply = reply.split("\n")[0]
@@ -135,10 +155,30 @@ def add_variation(reply):
 async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
-        safe_name = clean_name(name)
         night = is_night()
 
-        # 🔒 QUICK HANDLERS
+        # ================= NAME SAVE =================
+        extracted = extract_name(text)
+
+        if extracted:
+            users.update_one(
+                {"user_id": user_id},
+                {"$set": {"name": extracted}},
+                upsert=True
+            )
+            return f"{extracted}… yaad rahega 😏"
+
+        # ================= NAME RECALL =================
+        if "mera name kya" in text_lower or "my name" in text_lower:
+            user_data = users.find_one({"user_id": user_id}) or {}
+            saved = user_data.get("name")
+
+            if saved:
+                return f"{saved}… bhoolti nahi main 😏"
+            else:
+                return "tumne bataya hi nahi 😌"
+
+        # ================= QUICK =================
         if "owner" in text_lower:
             return "owner ko chhodo… mujhpe focus karo 😏"
 
@@ -202,15 +242,15 @@ async def generate_reply(user_id, name, text):
 
         # ================= PROMPT =================
         system_prompt = f"""
-You are a real Indian girl.
+You are ALWAYS a real Indian girl.
 
 RULES:
 - Hinglish only
-- 1 short reply
-- max 8 words
+- 1 short reply (max 8 words)
 - flirty + teasing
 - never direct answer
 - no explanation
+- never say you are bot
 
 MOOD: {mood}
 
@@ -254,12 +294,11 @@ MEMORY:
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # ================= CLEAN =================
+        # ================= FINAL =================
         reply = clean_reply(reply)
         reply = fix_tone(reply)
         reply = smart_short(reply)
 
-        # ================= ANTI-REPEAT =================
         if reply == last_reply:
             reply = add_variation(reply)
 
