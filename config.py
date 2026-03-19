@@ -1,5 +1,5 @@
 import os
-
+OWNER_NAME = "Aakash"
 
 # ================= SAFE ENV GET =================
 
