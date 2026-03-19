@@ -208,7 +208,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         history = context.application.bot_data["last_replies"].get(user.id, [])
 
         tries = 0
-        while reply in history and tries < 3:
+        while reply in history and tries < 2:
             reply = await generate_reply(user.id, user.first_name, text)
             tries += 1
 
@@ -230,16 +230,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply)
 
-        # ================= STICKER =================
+        # ================= SMART STICKER =================
         try:
             user_data = users.find_one({"user_id": user.id}) or {}
             relationship = int(user_data.get("relationship", 0))
 
             mood = detect_reply_mood(reply)
 
+            # 🔥 force trigger
             force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
 
-            chance = min(10 + relationship // 2, 80)
+            # 🔥 relationship based %
+            if relationship < 30:
+                chance = 10
+            elif relationship < 70:
+                chance = 25
+            elif relationship < 120:
+                chance = 45
+            else:
+                chance = 70
+
+            # 🔥 boost
+            if mood in ["love", "kiss"]:
+                chance += 15
+
+            chance = min(chance, 85)
 
             send = True if force else random.randint(1, 100) <= chance
 
@@ -254,7 +269,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print("Sticker error:", e)
 
-        # ================= VOICE FIX =================
+        # ================= VOICE =================
         if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao", "audio"]):
             voice_file = await text_to_voice(reply, user.id)
 
@@ -294,6 +309,8 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    init_memory(app)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
