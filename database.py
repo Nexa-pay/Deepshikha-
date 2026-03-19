@@ -47,7 +47,6 @@ def update_user(user_id, name):
             {
                 "$setOnInsert": {
                     "user_id": user_id,
-                    "messages": 0,  # ✅ only here
                     "last_seen": now,
                     "attachment": 0,
                     "relationship": 0,
@@ -71,8 +70,9 @@ def update_user(user_id, name):
                     "last_active": now
                 },
 
+                # 🔥 ONLY HERE → NO CONFLICT EVER
                 "$inc": {
-                    "messages": 1  # ✅ conflict-free
+                    "messages": 1
                 }
             },
             upsert=True
