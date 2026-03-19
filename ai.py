@@ -132,6 +132,7 @@ def fix_tone(reply):
 
     return reply
 
+
 # ================= SHORT =================
 
 def smart_short(reply):
@@ -140,16 +141,17 @@ def smart_short(reply):
     return " ".join(words[:10])
 
 
-# ================= VARIATION =================
+# ================= VARIATION (UPDATED) =================
 
 def add_variation(reply):
     return reply + random.choice([
         "",
-        " 😏",
+        " 😌",
         " hmm",
         " acha",
-        " seriously?",
-        " tum bhi na"
+        " na",
+        " tum bhi na",
+        " seriously?"
     ])
 
 
@@ -159,6 +161,24 @@ async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
         night = is_night()
+
+        # ================= NEW: SAD RESPONSE =================
+        if any(x in text_lower for x in ["sad", "alone", "hurt", "cry"]):
+            return random.choice([
+                "kya hua… mujhe batao na 😌",
+                "tum theek ho na… 😟",
+                "itna sad kyun ho… main hoon na",
+                "aaj mood off lag raha hai 😔"
+            ])
+
+        # ================= NEW: DRY RESPONSE =================
+        if len(text_lower.split()) <= 2:
+            return random.choice([
+                "itna dry reply kyun 😌",
+                "thoda aur bolo na 🙂",
+                "bas itna hi? 😏",
+                "mujhe ignore kar rahe ho kya 😒"
+            ])
 
         # ================= NAME SAVE =================
         extracted = extract_name(text)
@@ -205,7 +225,6 @@ async def generate_reply(user_id, name, text):
 
         msg_type = detect_type(text)
 
-        # ================= RELATIONSHIP =================
         if msg_type == "flirty":
             relationship += 6
         elif msg_type == "dry":
@@ -218,7 +237,6 @@ async def generate_reply(user_id, name, text):
 
         relationship = max(0, min(200, relationship))
 
-        # ================= MOOD =================
         if relationship > 120:
             mood = "possessive flirty"
         elif relationship > 70:
@@ -229,7 +247,6 @@ async def generate_reply(user_id, name, text):
         if night:
             mood += ", soft romantic"
 
-        # ================= MEMORY =================
         new_secrets = extract_secrets(text)
 
         if new_secrets:
@@ -243,7 +260,6 @@ async def generate_reply(user_id, name, text):
             if isinstance(s, dict):
                 secret_text += f"- {s.get('value')}\n"
 
-        # ================= PROMPT =================
         system_prompt = f"""
 You are ALWAYS a real Indian girl.
 
@@ -294,7 +310,6 @@ MEMORY:
 
         messages.append({"role": "user", "content": text})
 
-        # ================= API =================
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
@@ -319,7 +334,6 @@ MEMORY:
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # ================= FINAL =================
         reply = clean_reply(reply)
         reply = fix_tone(reply)
         reply = smart_short(reply)
@@ -327,7 +341,6 @@ MEMORY:
         if reply == last_reply:
             reply = add_variation(reply)
 
-        # ================= SAVE =================
         users.update_one(
             {"user_id": user_id},
             {
