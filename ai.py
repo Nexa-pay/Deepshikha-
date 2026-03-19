@@ -9,7 +9,8 @@ from config import (
     OPENROUTER_API_KEY,
     MODEL,
     TEMPERATURE,
-    MAX_TOKENS
+    MAX_TOKENS,
+    OWNER_NAME
 )
 
 from database import users
@@ -180,7 +181,7 @@ async def generate_reply(user_id, name, text):
 
         # ================= QUICK =================
         if "owner" in text_lower:
-            return "owner ko chhodo… mujhpe focus karo 😏"
+            return f"owner {OWNER_NAME} hai… par tum mujhpe focus karo 😏"
 
         if "sticker" in text_lower:
             return random.choice([
@@ -353,8 +354,3 @@ def detect_reply_mood(reply):
 
     except:
         return "cute"
-        
-        from config import OWNER_NAME
-        if "owner" in text_lower:
-    return f"owner {OWNER_NAME} hai… par tum mujhpe focus karo 😏"
-        
