@@ -4,6 +4,7 @@ import asyncio
 import time
 
 from telegram import Update, ChatMemberUpdated
+from telegram.constants import ChatAction  # ✅ FIX
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -22,13 +23,19 @@ from config import (
     ENABLE_VOICE
 )
 
-from database import (
-    update_user,
-    users,
-    save_group,
-    get_groups,
-    get_top_users
-)
+# ✅ SAFE IMPORT FIX
+try:
+    from database import (
+        update_user,
+        users,
+        save_group,
+        get_groups,
+        get_top_users
+    )
+except ImportError:
+    from database import update_user, users, save_group, get_groups
+    def get_top_users():
+        return []
 
 from ai import (
     generate_reply,
@@ -48,9 +55,11 @@ def init_memory(app):
     if "last_replies" not in app.bot_data:
         app.bot_data["last_replies"] = {}
 
+    if "last_activity" not in app.bot_data:  # ✅ FIX
+        app.bot_data["last_activity"] = {}
+
 
 # ================= STICKERS =================
-
 def load_stickers():
     data = {}
     current = None
@@ -82,6 +91,9 @@ STICKERS = load_stickers()
 # ================= START =================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+
     user = update.message.from_user
     update_user(user.id, user.first_name)
     await update.message.reply_text("hii… main Deepsikha hu 😏")
@@ -94,7 +106,7 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != OWNER_ID:
+    if not update.message or update.message.from_user.id != OWNER_ID:
         return
 
     msg = " ".join(context.args)
@@ -160,7 +172,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         init_memory(context.application)
 
         chat_id = update.message.chat_id
-        context.application.bot_data[chat_id] = time.time()
+
+        # ✅ FIX (no overwrite)
+        context.application.bot_data["last_activity"][chat_id] = time.time()
 
         if update.message.sticker:
             await update.message.reply_text(update.message.sticker.file_id)
@@ -170,11 +184,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         user = update.message.from_user
+        if not user:
+            return
+
         text = update.message.text.strip()
         text_lower = text.lower()
         chat_type = update.message.chat.type
 
-        bot_username = context.bot.username.lower()
+        # ✅ FIX (safe username)
+        bot_username = (context.bot.username or "").lower()
+
         is_reply = update.message.reply_to_message
 
         if chat_type in ["group", "supergroup"]:
@@ -216,14 +235,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply += random.choice([" 😏", " hmm", " acha"])
 
         history.append(reply)
-        history = history[-5:]
-        context.application.bot_data["last_replies"][user.id] = history
+        context.application.bot_data["last_replies"][user.id] = history[-5:]
 
         # ================= DELAY =================
         delay = random.randint(MIN_DELAY, MAX_DELAY)
 
         for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)  # ✅ FIX
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
@@ -237,10 +255,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             mood = detect_reply_mood(reply)
 
-            # 🔥 force trigger
             force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
 
-            # 🔥 relationship based %
             if relationship < 30:
                 chance = 10
             elif relationship < 70:
@@ -250,7 +266,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 chance = 70
 
-            # 🔥 boost
             if mood in ["love", "kiss"]:
                 chance += 15
 
@@ -291,7 +306,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in get_groups():
         try:
-            last = context.application.bot_data.get(chat_id, 0)
+            last = context.application.bot_data["last_activity"].get(chat_id, 0)
 
             if time.time() - last > 900:
                 continue
