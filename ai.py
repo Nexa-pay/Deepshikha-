@@ -118,17 +118,19 @@ def clean_reply(reply):
 # ================= TONE FIX =================
 
 def fix_tone(reply):
-    bad_words = ["bakchodi", "chup chaap", "rona band", "chal nikal"]
+    bad_words = [
+        "bakchodi", "chup chaap", "rona band",
+        "chal nikal", "pagal", "faltu", "shut up"
+    ]
 
     if any(w in reply.lower() for w in bad_words):
         return random.choice([
-            "itna attitude kyun 😏",
             "aise mat bolo na 😌",
-            "tum thode rude ho 😒"
+            "thoda softly baat karo 🙂",
+            "itna rude kyun ho 😅"
         ])
 
     return reply
-
 
 # ================= SHORT =================
 
