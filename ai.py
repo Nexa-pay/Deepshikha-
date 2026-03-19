@@ -57,22 +57,18 @@ def get_random_image():
 # ================= MOOD =================
 
 def detect_reply_mood(reply):
-    try:
-        r = reply.lower()
+    r = reply.lower()
 
-        if any(x in r for x in ["love", "miss", "jaan"]):
-            return "love"
-        if any(x in r for x in ["sad", "alone", "hurt"]):
-            return "cry"
-        if any(x in r for x in ["kiss", "mwah"]):
-            return "kiss"
-        if any(x in r for x in ["angry", "attitude"]):
-            return "angry"
+    if any(x in r for x in ["love", "miss", "jaan"]):
+        return "love"
+    if any(x in r for x in ["sad", "alone", "hurt"]):
+        return "cry"
+    if any(x in r for x in ["kiss", "mwah"]):
+        return "kiss"
+    if any(x in r for x in ["angry", "attitude"]):
+        return "angry"
 
-        return "cute"
-
-    except:
-        return "cute"
+    return "cute"
 
 
 # ================= TYPE =================
@@ -119,7 +115,6 @@ def clean_reply(reply):
     reply = re.sub(r"\*.*?\*", "", reply)
     reply = re.sub(r"\(.*?\)", "", reply)
     reply = re.sub(r"\s+", " ", reply).strip()
-
     return reply
 
 
@@ -131,9 +126,9 @@ def force_short_reply(reply):
 
     if len(words) > 12:
         return random.choice([
-            "seedha point pe aao 😏",
-            "itna long kyun bol rahe ho 😌",
-            "short me bolo na 😏"
+            "seedha bolo na 😏",
+            "itna lamba kyun 😌",
+            "short me bolo 😏"
         ])
 
     return " ".join(words[:12])
@@ -145,15 +140,16 @@ async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
         safe_name = clean_name(name)
+        night = is_night()
 
         # OWNER PROTECT
         if "owner" in text_lower:
             return "owner ko chhodo… mujhpe focus karo 😏"
 
-        # NAME
+        # NAME RESPONSE
         if any(x in text_lower for x in ["mera naam", "my name"]):
             if safe_name:
-                return f"naam toh yaad hai mujhe 😏"
+                return "naam toh yaad hai mujhe 😏"
             return "naam thoda interesting hai tumhara 😌"
 
         user_data = users.find_one({"user_id": user_id}) or {}
@@ -164,7 +160,7 @@ async def generate_reply(user_id, name, text):
         last_seen = user_data.get("last_seen", int(time.time()))
 
         now = int(time.time())
-        gap = now - last_seen if last_seen else 0
+        gap = now - last_seen
 
         msg_type = detect_type(text)
 
@@ -188,11 +184,11 @@ async def generate_reply(user_id, name, text):
         elif relationship > 70:
             mood = "playful flirty"
         else:
-            mood = "teasing neutral"
+            mood = "teasing"
 
-        # 🌙 NIGHT BOOST
-        if is_night():
-            mood += ", soft romantic"
+        # 🌙 NIGHT MODE
+        if night:
+            mood += ", soft romantic, slightly bold"
 
         # ================= MEMORY =================
 
@@ -212,28 +208,31 @@ async def generate_reply(user_id, name, text):
         # ================= PROMPT =================
 
         system_prompt = f"""
-You are a real Indian girl chatting.
+You are ALWAYS a real Indian girl chatting.
 
 RULES:
-- 1 short line only
+- always female personality
+- 1 short reply only (max 8-10 words)
 - Hinglish only
-- no long replies
-- no repeated phrases
+- no long text
 - no roleplay (*)
-- don't use name unless needed
+- no cringe lines
 
 STYLE:
-- tease + confuse + interest create
-- कभी उल्टा जवाब दो
+- tease + confuse + attract
 - कभी direct answer मत दो
-
-PERSONALITY:
-- cute → teasing → flirty → slightly possessive
+- थोड़ा attitude + charm
 
 MOOD: {mood}
 
 MEMORY:
 {secret_text}
+
+EXAMPLES:
+- acha? itna attitude kyun 😏
+- tum interesting ho 😌
+- mujhe ignore kar rahe ho kya 😒
+- raat me yaad aayi meri 😏
 """
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -268,21 +267,19 @@ MEMORY:
                 except:
                     return "network thoda slow hai 😌"
 
-        reply = None
-
-        if isinstance(result, dict):
-            reply = result.get("choices", [{}])[0].get("message", {}).get("content")
+        reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # ================= CLEAN =================
-
+        # CLEAN
         reply = clean_reply(reply)
 
+        # REMOVE BAD PATTERNS
         for bad in ["hello hello", "aree", "arre"]:
             reply = reply.replace(bad, "")
 
+        # SHORT CONTROL
         reply = force_short_reply(reply)
 
         # ================= SAVE =================
