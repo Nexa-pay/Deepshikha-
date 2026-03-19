@@ -1,5 +1,7 @@
 import os
 import time
+import re
+import random
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
 
@@ -29,269 +31,282 @@ try:
     users.create_index("messages")
     groups.create_index("chat_id", unique=True)
 
-    print("Database connected successfully 🚀")
+    print("✅ Database connected successfully 🚀")
 
 except ServerSelectionTimeoutError:
     print("❌ MongoDB connection failed")
     raise
 
 
+# ================= ENSURE USER =================
+
+def ensure_user(user_id, name="user"):
+    now = int(time.time())
+
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$setOnInsert": {
+                "user_id": user_id,
+                "saved_name": None,
+                "history": [],
+                "nicknames": [],
+                "last_nickname": None,
+                "tokens": 20,
+                "is_vip": False,
+                "vip_expiry": 0,
+                "trial_used": False,
+                "trial_expiry": 0,
+                "messages": 0
+            },
+            "$set": {
+                "name": name,
+                "display_name": name,
+                "last_active": now,
+                "last_seen": now
+            }
+        },
+        upsert=True
+    )
+
+
 # ================= UPDATE USER =================
 
 def update_user(user_id, name):
-    now = int(time.time())
+    try:
+        ensure_user(user_id, name)
 
+        users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "name": name if name else "user",
+                    "display_name": name if name else "user",
+                    "last_active": int(time.time())
+                },
+                "$inc": {"messages": 1}
+            }
+        )
+
+    except Exception as e:
+        print("❌ DB update error:", e)
+
+
+# ================= CHAT MEMORY =================
+
+def save_chat(user_id, role, text, limit=20):
     try:
         users.update_one(
             {"user_id": user_id},
             {
-                "$setOnInsert": {
-                    "user_id": user_id,
-                    "saved_name": None,   # 🔥 user ka actual name
-                    "last_seen": now,
-                    "attachment": 0,
-                    "relationship": 0,
-                    "ignore_count": 0,
-                    "personality": {"type": "normal"},
-                    "favorites": {"topics": []},
-                    "history": [],
-                    "secrets": [],
-                    "tokens": 20,
-                    "is_vip": False,
-                    "vip_expiry": 0,
-                    "trial_used": False,
-                    "trial_expiry": 0,
-                    "ref_by": None,
-                    "ref_count": 0,
-                    "last_sticker": None,
-                    "nicknames": [],          # 🔥 future use
-                    "last_nickname": None
-                },
-
-                "$set": {
-                    "name": name if name else "user",        # telegram name
-                    "display_name": name if name else "user", # safe display
-                    "last_active": now
-                },
-
-                "$inc": {
-                    "messages": 1
+                "$push": {
+                    "history": {
+                        "$each": [{
+                            "role": role,
+                            "text": text,
+                            "time": int(time.time())
+                        }],
+                        "$slice": -limit
+                    }
                 }
-            },
-            upsert=True
+            }
         )
-
     except Exception as e:
-        print("DB update error:", e)
+        print("❌ Chat save error:", e)
 
 
-# ================= NAME SYSTEM =================
+def get_chat_history(user_id):
+    user = users.find_one({"user_id": user_id})
+    return user.get("history", []) if user else []
+
+
+# ================= NAME =================
+
+def extract_name(text):
+    patterns = [
+        r"mera naam (\w+)",
+        r"mera name (\w+)",
+        r"my name is (\w+)"
+    ]
+    for p in patterns:
+        m = re.search(p, text.lower())
+        if m:
+            return m.group(1).capitalize()
+    return None
+
 
 def save_user_name(user_id, name):
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {"$set": {"saved_name": name}}
-        )
-    except Exception as e:
-        print("Save name error:", e)
+    ensure_user(user_id)
+    users.update_one(
+        {"user_id": user_id},
+        {"$set": {"saved_name": name}}
+    )
 
 
 def get_saved_name(user_id):
+    user = users.find_one({"user_id": user_id})
+    return user.get("saved_name") if user else None
+
+
+# ================= NICKNAME =================
+
+def extract_nickname(text):
+    patterns = [
+        r"mujhe (\w+) bulao",
+        r"call me (\w+)"
+    ]
+    for p in patterns:
+        m = re.search(p, text.lower())
+        if m:
+            return m.group(1).capitalize()
+    return None
+
+
+def save_nickname(user_id, nickname):
+    ensure_user(user_id)
+
+    users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {"last_nickname": nickname},
+            "$addToSet": {"nicknames": nickname}
+        }
+    )
+
+
+def get_nickname(user_id):
+    user = users.find_one({"user_id": user_id})
+    return user.get("last_nickname") if user else None
+
+
+# ================= MEMORY =================
+
+def extract_age(text):
+    m = re.search(r"(\d{1,2}) (saal|years?)", text.lower())
+    return int(m.group(1)) if m else None
+
+
+def extract_mood(text):
+    moods = {
+        "sad": ["sad", "dukhi", "udaas"],
+        "happy": ["happy", "khush"],
+        "angry": ["gussa", "angry"],
+        "love": ["pyaar", "love"]
+    }
+
+    for mood, words in moods.items():
+        if any(w in text.lower() for w in words):
+            return mood
+    return None
+
+
+def save_memory(user_id, age=None, mood=None):
+    update = {}
+    if age:
+        update["age"] = age
+    if mood:
+        update["mood"] = mood
+
+    if update:
+        users.update_one({"user_id": user_id}, {"$set": update})
+
+
+# ================= FLIRTY =================
+
+def flirty_reply(user_id):
+    name = get_saved_name(user_id)
+    nick = get_nickname(user_id)
+
+    base = nick or name or "tum"
+
+    replies = [
+        f"{base}… tum cute ho 😏",
+        f"{base}, itna yaad kyun aate ho ❤️",
+        f"{base}, main ignore karu ya paas aau? 😏",
+        f"Tum dangerous ho {base} 🔥"
+    ]
+
+    return random.choice(replies)
+
+
+# ================= MAIN HANDLER =================
+
+def smart_handler(user_id, text, telegram_name="user"):
     try:
-        user = users.find_one({"user_id": user_id})
-        return user.get("saved_name") if user else None
+        update_user(user_id, telegram_name)
+
+        # SAVE USER MSG
+        save_chat(user_id, "user", text)
+
+        text_l = text.lower()
+
+        # NAME
+        name = extract_name(text)
+        if name:
+            save_user_name(user_id, name)
+            reply = f"Acha {name}, yaad rahega 😏"
+            save_chat(user_id, "bot", reply)
+            return reply
+
+        if "mera naam kya" in text_l:
+            name = get_saved_name(user_id)
+            reply = f"Tumhara naam {name} hai 😏" if name else "Naam nahi bataya 😅"
+            save_chat(user_id, "bot", reply)
+            return reply
+
+        # NICKNAME
+        nick = extract_nickname(text)
+        if nick:
+            save_nickname(user_id, nick)
+            reply = f"Thik hai… ab tum {nick} ho 😏🔥"
+            save_chat(user_id, "bot", reply)
+            return reply
+
+        # AGE
+        age = extract_age(text)
+        if age:
+            save_memory(user_id, age=age)
+            reply = f"{age}? interesting 😏"
+            save_chat(user_id, "bot", reply)
+            return reply
+
+        # MOOD
+        mood = extract_mood(text)
+        if mood:
+            save_memory(user_id, mood=mood)
+            reply = f"Samajh gayi… tum {mood} ho 💭"
+            save_chat(user_id, "bot", reply)
+            return reply
+
+        # DEFAULT
+        reply = flirty_reply(user_id)
+        save_chat(user_id, "bot", reply)
+        return reply
+
     except Exception as e:
-        print("Get name error:", e)
-        return None
-
-
-# ================= SAFE WRAPPER =================
-
-def safe_update_user(user_id, name):
-    try:
-        update_user(user_id, name)
-    except Exception as e:
-        print("Safe update error:", e)
+        print("❌ Handler error:", e)
+        return "Error 😅"
 
 
 # ================= GROUP =================
 
 def save_group(chat_id):
-    try:
-        groups.update_one(
-            {"chat_id": chat_id},
-            {"$set": {"chat_id": chat_id}},
-            upsert=True
-        )
-    except Exception as e:
-        print("Group save error:", e)
+    groups.update_one(
+        {"chat_id": chat_id},
+        {"$set": {"chat_id": chat_id}},
+        upsert=True
+    )
 
 
 def get_groups():
-    try:
-        return [g["chat_id"] for g in groups.find({}, {"_id": 0, "chat_id": 1})]
-    except Exception as e:
-        print("Group fetch error:", e)
-        return []
+    return [g["chat_id"] for g in groups.find({}, {"_id": 0, "chat_id": 1})]
 
 
-# ================= TOKENS =================
-
-def use_tokens(user_id, amount):
-    try:
-        user = users.find_one({"user_id": user_id})
-
-        if not user or user.get("tokens", 0) < amount:
-            return False
-
-        users.update_one(
-            {"user_id": user_id},
-            {"$inc": {"tokens": -amount}}
-        )
-
-        return True
-
-    except Exception as e:
-        print("Token error:", e)
-        return False
-
-
-def add_tokens(user_id, amount):
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {"$inc": {"tokens": amount}}
-        )
-    except Exception as e:
-        print("Add token error:", e)
-
-
-# ================= VIP =================
-
-def give_vip(user_id, days=30):
-    expiry = int(time.time()) + (days * 86400)
-
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {
-                "$set": {
-                    "is_vip": True,
-                    "vip_expiry": expiry
-                }
-            }
-        )
-    except Exception as e:
-        print("VIP error:", e)
-
-
-def is_vip_user(user):
-    try:
-        return bool(user and user.get("is_vip") and user.get("vip_expiry", 0) > time.time())
-    except:
-        return False
-
-
-# ================= TRIAL =================
-
-def give_trial(user_id):
-    expiry = int(time.time()) + (30 * 86400)
-
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {
-                "$set": {
-                    "trial_used": True,
-                    "trial_expiry": expiry
-                }
-            }
-        )
-    except Exception as e:
-        print("Trial error:", e)
-
-
-def has_access(user):
-    try:
-        now = time.time()
-
-        if not user:
-            return False
-
-        if user.get("is_vip") and user.get("vip_expiry", 0) > now:
-            return True
-
-        if user.get("trial_expiry", 0) > now:
-            return True
-
-        return False
-
-    except Exception as e:
-        print("Access error:", e)
-        return False
-
-
-# ================= REFERRAL =================
-
-def add_referral(new_user_id, referrer_id):
-    try:
-        if new_user_id == referrer_id:
-            return
-
-        users.update_one(
-            {"user_id": new_user_id},
-            {"$set": {"ref_by": referrer_id}},
-            upsert=True
-        )
-
-        users.update_one(
-            {"user_id": referrer_id},
-            {
-                "$inc": {"ref_count": 1, "tokens": 5}
-            }
-        )
-
-    except Exception as e:
-        print("Referral error:", e)
-
-
-# ================= LEADERBOARD =================
-
-def get_top_users(limit=10):
-    try:
-        return list(
-            users.find({}, {"_id": 0, "name": 1, "messages": 1})
-            .sort("messages", -1)
-            .limit(limit)
-        )
-    except Exception as e:
-        print("Top users error:", e)
-        return []
-
-
-# ================= USER =================
-
-def get_user(user_id):
-    try:
-        return users.find_one({"user_id": user_id})
-    except Exception as e:
-        print("Get user error:", e)
-        return None
-
-
-def delete_user(user_id):
-    try:
-        users.delete_one({"user_id": user_id})
-    except Exception as e:
-        print("Delete error:", e)
-
+# ================= HISTORY =================
 
 def clear_history(user_id):
-    try:
-        users.update_one(
-            {"user_id": user_id},
-            {"$set": {"history": []}}
-        )
-    except Exception as e:
-        print("Clear history error:", e)
+    users.update_one(
+        {"user_id": user_id},
+        {"$set": {"history": []}}
+    )
+    return "Chat memory cleared 🧹"
