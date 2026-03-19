@@ -42,6 +42,13 @@ from voice import text_to_voice, delete_voice
 logging.basicConfig(level=logging.INFO)
 
 
+# ================= MEMORY =================
+
+def init_memory(app):
+    if "last_replies" not in app.bot_data:
+        app.bot_data["last_replies"] = {}
+
+
 # ================= STICKERS =================
 
 def load_stickers():
@@ -77,7 +84,6 @@ STICKERS = load_stickers()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     update_user(user.id, user.first_name)
-
     await update.message.reply_text("hii… main Deepsikha hu 😏")
 
 
@@ -151,6 +157,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message:
             return
 
+        init_memory(context.application)
+
         chat_id = update.message.chat_id
         context.application.bot_data[chat_id] = time.time()
 
@@ -196,6 +204,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ================= AI =================
         reply = await generate_reply(user.id, user.first_name, text)
 
+        # ================= ANTI-REPEAT =================
+        history = context.application.bot_data["last_replies"].get(user.id, [])
+
+        tries = 0
+        while reply in history and tries < 3:
+            reply = await generate_reply(user.id, user.first_name, text)
+            tries += 1
+
+        if reply in history:
+            reply += random.choice([" 😏", " hmm", " acha"])
+
+        history.append(reply)
+        history = history[-5:]
+        context.application.bot_data["last_replies"][user.id] = history
+
         # ================= DELAY =================
         delay = random.randint(MIN_DELAY, MAX_DELAY)
 
@@ -207,40 +230,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply)
 
-        # ================= RELATIONSHIP STICKER =================
+        # ================= STICKER =================
         try:
             user_data = users.find_one({"user_id": user.id}) or {}
             relationship = int(user_data.get("relationship", 0))
 
-            combined = (text + " " + reply).lower()
             mood = detect_reply_mood(reply)
-
-            if any(x in combined for x in ["love", "miss", "jaan", "baby"]):
-                mood = "love"
-            elif any(x in combined for x in ["sad", "cry", "alone", "hurt"]):
-                mood = "cry"
-            elif any(x in combined for x in ["kiss", "mwah"]):
-                mood = "kiss"
-            elif any(x in combined for x in ["angry", "ignore", "attitude"]):
-                mood = "angry"
-            else:
-                mood = "cute"
 
             force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
 
-            if relationship < 30:
-                chance = 10
-            elif relationship < 70:
-                chance = 25
-            elif relationship < 120:
-                chance = 45
-            else:
-                chance = 70
-
-            if mood in ["love", "kiss"] and relationship > 80:
-                chance += 20
-
-            chance = min(chance, 90)
+            chance = min(10 + relationship // 2, 80)
 
             send = True if force else random.randint(1, 100) <= chance
 
@@ -255,9 +254,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print("Sticker error:", e)
 
-        # ================= VOICE =================
+        # ================= VOICE FIX =================
         if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao", "audio"]):
-            voice_file = text_to_voice(reply, user.id)
+            voice_file = await text_to_voice(reply, user.id)
 
             if voice_file:
                 try:
