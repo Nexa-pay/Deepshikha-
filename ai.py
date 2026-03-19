@@ -353,3 +353,8 @@ def detect_reply_mood(reply):
 
     except:
         return "cute"
+        
+        from config import OWNER_NAME
+        if "owner" in text_lower:
+    return f"owner {OWNER_NAME} hai… par tum mujhpe focus karo 😏"
+        
