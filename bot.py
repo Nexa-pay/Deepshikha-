@@ -177,7 +177,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.application.bot_data["last_activity"][chat_id] = time.time()
 
         if update.message.sticker:
-            await update.message.reply_text(update.message.sticker.file_id)
             return
 
         if not update.message.text:
