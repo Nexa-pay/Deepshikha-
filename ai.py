@@ -292,3 +292,26 @@ MEMORY:
     except Exception as e:
         print("AI ERROR:", e)
         return "network slow hai 😌"
+        
+        # ================= MOOD DETECT =================
+
+def detect_reply_mood(reply):
+    try:
+        r = reply.lower()
+
+        if any(x in r for x in ["love", "miss", "jaan"]):
+            return "love"
+
+        if any(x in r for x in ["sad", "alone", "hurt", "cry"]):
+            return "cry"
+
+        if any(x in r for x in ["kiss", "mwah"]):
+            return "kiss"
+
+        if any(x in r for x in ["angry", "attitude", "ignore"]):
+            return "angry"
+
+        return "cute"
+
+    except:
+        return "cute"
