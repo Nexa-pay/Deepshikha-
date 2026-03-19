@@ -21,8 +21,7 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 def is_night():
     india = pytz.timezone("Asia/Kolkata")
-    hour = datetime.now(india).hour
-    return hour >= 23 or hour <= 5
+    return datetime.now(india).hour in range(23, 24) or datetime.now(india).hour in range(0, 6)
 
 
 # ================= NAME CLEAN =================
@@ -32,11 +31,7 @@ def clean_name(name):
         return None
 
     name = re.sub(r'[^a-zA-Z ]', '', name).strip()
-
-    if len(name) < 3:
-        return None
-
-    return name
+    return name if len(name) >= 3 else None
 
 
 # ================= IMAGE =================
@@ -52,23 +47,6 @@ def should_send_image(text):
 
 def get_random_image():
     return random.choice(IMAGE_URLS)
-
-
-# ================= MOOD =================
-
-def detect_reply_mood(reply):
-    r = reply.lower()
-
-    if any(x in r for x in ["love", "miss", "jaan"]):
-        return "love"
-    if any(x in r for x in ["sad", "alone", "hurt"]):
-        return "cry"
-    if any(x in r for x in ["kiss", "mwah"]):
-        return "kiss"
-    if any(x in r for x in ["angry", "attitude"]):
-        return "angry"
-
-    return "cute"
 
 
 # ================= TYPE =================
@@ -118,20 +96,29 @@ def clean_reply(reply):
     return reply
 
 
+# ================= ANTI-RUDE FILTER =================
+
+def fix_tone(reply):
+    bad_words = ["bakchodi", "chup chaap", "rona band", "chal nikal"]
+
+    if any(w in reply.lower() for w in bad_words):
+        return random.choice([
+            "itna attitude kyun 😏",
+            "aise mat bolo na 😌",
+            "tum thode rude ho 😒"
+        ])
+
+    return reply
+
+
 # ================= SHORT CONTROL =================
 
-def force_short_reply(reply):
+def smart_short(reply):
     reply = reply.split("\n")[0]
     words = reply.split()
 
-    if len(words) > 12:
-        return random.choice([
-            "seedha bolo na 😏",
-            "itna lamba kyun 😌",
-            "short me bolo 😏"
-        ])
-
-    return " ".join(words[:12])
+    # trim instead of replacing (natural feel)
+    return " ".join(words[:10])
 
 
 # ================= MAIN =================
@@ -142,15 +129,21 @@ async def generate_reply(user_id, name, text):
         safe_name = clean_name(name)
         night = is_night()
 
-        # OWNER PROTECT
+        # 🔒 OWNER
         if "owner" in text_lower:
             return "owner ko chhodo… mujhpe focus karo 😏"
 
-        # NAME RESPONSE
+        # 🔒 NAME
         if any(x in text_lower for x in ["mera naam", "my name"]):
-            if safe_name:
-                return "naam toh yaad hai mujhe 😏"
-            return "naam thoda interesting hai tumhara 😌"
+            return "naam toh yaad hai mujhe 😏"
+
+        # 🔥 STICKER DEMAND STYLE
+        if "sticker" in text_lower:
+            return random.choice([
+                "sirf sticker hi chahiye tumhe 😏",
+                "khud nahi bhejoge kya 😌",
+                "itni demand kyun 😏"
+            ])
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
@@ -186,9 +179,8 @@ async def generate_reply(user_id, name, text):
         else:
             mood = "teasing"
 
-        # 🌙 NIGHT MODE
         if night:
-            mood += ", soft romantic, slightly bold"
+            mood += ", soft romantic"
 
         # ================= MEMORY =================
 
@@ -210,29 +202,24 @@ async def generate_reply(user_id, name, text):
         system_prompt = f"""
 You are ALWAYS a real Indian girl chatting.
 
-RULES:
-- always female personality
-- 1 short reply only (max 8-10 words)
+STRICT RULES:
+- always female
+- never say you are AI
+- 1 short reply only
 - Hinglish only
-- no long text
+- no explanation
 - no roleplay (*)
-- no cringe lines
+- no long text
 
 STYLE:
-- tease + confuse + attract
-- कभी direct answer मत दो
-- थोड़ा attitude + charm
+- flirty, teasing, natural
+- confuse + attract
+- never give direct answers
 
 MOOD: {mood}
 
 MEMORY:
 {secret_text}
-
-EXAMPLES:
-- acha? itna attitude kyun 😏
-- tum interesting ho 😌
-- mujhe ignore kar rahe ho kya 😒
-- raat me yaad aayi meri 😏
 """
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -265,22 +252,18 @@ EXAMPLES:
                 try:
                     result = await res.json()
                 except:
-                    return "network thoda slow hai 😌"
+                    return "network slow hai 😌"
 
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # CLEAN
+        # ================= FINAL PROCESS =================
+
         reply = clean_reply(reply)
-
-        # REMOVE BAD PATTERNS
-        for bad in ["hello hello", "aree", "arre"]:
-            reply = reply.replace(bad, "")
-
-        # SHORT CONTROL
-        reply = force_short_reply(reply)
+        reply = fix_tone(reply)
+        reply = smart_short(reply)
 
         # ================= SAVE =================
 
