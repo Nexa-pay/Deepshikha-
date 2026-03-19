@@ -21,7 +21,8 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 def is_night():
     india = pytz.timezone("Asia/Kolkata")
-    return datetime.now(india).hour in range(23, 24) or datetime.now(india).hour in range(0, 6)
+    hour = datetime.now(india).hour
+    return hour >= 23 or hour <= 5
 
 
 # ================= NAME CLEAN =================
@@ -29,7 +30,6 @@ def is_night():
 def clean_name(name):
     if not name:
         return None
-
     name = re.sub(r'[^a-zA-Z ]', '', name).strip()
     return name if len(name) >= 3 else None
 
@@ -40,10 +40,8 @@ IMAGE_URLS = [
     "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
 ]
 
-
 def should_send_image(text):
     return any(x in text.lower() for x in ["photo", "pic", "selfie", "image"])
-
 
 def get_random_image():
     return random.choice(IMAGE_URLS)
@@ -96,7 +94,7 @@ def clean_reply(reply):
     return reply
 
 
-# ================= ANTI-RUDE FILTER =================
+# ================= TONE FIX =================
 
 def fix_tone(reply):
     bad_words = ["bakchodi", "chup chaap", "rona band", "chal nikal"]
@@ -116,9 +114,20 @@ def fix_tone(reply):
 def smart_short(reply):
     reply = reply.split("\n")[0]
     words = reply.split()
-
-    # trim instead of replacing (natural feel)
     return " ".join(words[:10])
+
+
+# ================= VARIATION =================
+
+def add_variation(reply):
+    return reply + random.choice([
+        "",
+        " 😏",
+        " hmm",
+        " acha",
+        " seriously?",
+        " tum bhi na"
+    ])
 
 
 # ================= MAIN =================
@@ -129,15 +138,10 @@ async def generate_reply(user_id, name, text):
         safe_name = clean_name(name)
         night = is_night()
 
-        # 🔒 OWNER
+        # 🔒 QUICK HANDLERS
         if "owner" in text_lower:
             return "owner ko chhodo… mujhpe focus karo 😏"
 
-        # 🔒 NAME
-        if any(x in text_lower for x in ["mera naam", "my name"]):
-            return "naam toh yaad hai mujhe 😏"
-
-        # 🔥 STICKER DEMAND STYLE
         if "sticker" in text_lower:
             return random.choice([
                 "sirf sticker hi chahiye tumhe 😏",
@@ -151,13 +155,14 @@ async def generate_reply(user_id, name, text):
         secrets = user_data.get("secrets", [])
         relationship = int(user_data.get("relationship", 0))
         last_seen = user_data.get("last_seen", int(time.time()))
+        last_reply = user_data.get("last_reply", "")
 
         now = int(time.time())
         gap = now - last_seen
 
         msg_type = detect_type(text)
 
-        # RELATIONSHIP ENGINE
+        # ================= RELATIONSHIP =================
         if msg_type == "flirty":
             relationship += 6
         elif msg_type == "dry":
@@ -171,7 +176,6 @@ async def generate_reply(user_id, name, text):
         relationship = max(0, min(200, relationship))
 
         # ================= MOOD =================
-
         if relationship > 120:
             mood = "possessive flirty"
         elif relationship > 70:
@@ -183,7 +187,6 @@ async def generate_reply(user_id, name, text):
             mood += ", soft romantic"
 
         # ================= MEMORY =================
-
         new_secrets = extract_secrets(text)
 
         if new_secrets:
@@ -198,23 +201,16 @@ async def generate_reply(user_id, name, text):
                 secret_text += f"- {s.get('value')}\n"
 
         # ================= PROMPT =================
-
         system_prompt = f"""
-You are ALWAYS a real Indian girl chatting.
+You are a real Indian girl.
 
-STRICT RULES:
-- always female
-- never say you are AI
-- 1 short reply only
+RULES:
 - Hinglish only
+- 1 short reply
+- max 8 words
+- flirty + teasing
+- never direct answer
 - no explanation
-- no roleplay (*)
-- no long text
-
-STYLE:
-- flirty, teasing, natural
-- confuse + attract
-- never give direct answers
 
 MOOD: {mood}
 
@@ -224,7 +220,7 @@ MEMORY:
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-15:]:
+        for h in history[-10:]:
             if isinstance(h, dict):
                 if h.get("role") == "user":
                     messages.append({"role": "user", "content": h.get("text")})
@@ -234,7 +230,6 @@ MEMORY:
         messages.append({"role": "user", "content": text})
 
         # ================= API =================
-
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json"
@@ -249,30 +244,33 @@ MEMORY:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
-                try:
-                    result = await res.json()
-                except:
-                    return "network slow hai 😌"
+                if res.status != 200:
+                    return "network thoda slow hai 😌"
+
+                result = await res.json()
 
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
             reply = "samajh nahi aaya 😏"
 
-        # ================= FINAL PROCESS =================
-
+        # ================= CLEAN =================
         reply = clean_reply(reply)
         reply = fix_tone(reply)
         reply = smart_short(reply)
 
-        # ================= SAVE =================
+        # ================= ANTI-REPEAT =================
+        if reply == last_reply:
+            reply = add_variation(reply)
 
+        # ================= SAVE =================
         users.update_one(
             {"user_id": user_id},
             {
                 "$set": {
                     "relationship": relationship,
-                    "last_seen": now
+                    "last_seen": now,
+                    "last_reply": reply
                 },
                 "$push": {
                     "history": {
@@ -291,9 +289,10 @@ MEMORY:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "network slow hai 😌"
-        
-        # ================= MOOD DETECT =================
+        return "thoda glitch ho gaya 😌"
+
+
+# ================= MOOD DETECT =================
 
 def detect_reply_mood(reply):
     try:
