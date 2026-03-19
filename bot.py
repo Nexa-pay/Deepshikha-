@@ -19,7 +19,6 @@ from config import (
     MIN_DELAY,
     MAX_DELAY,
     PHOTO_CHANCE,
-    JEALOUSY_CHANCE,
     ENABLE_VOICE
 )
 
@@ -117,51 +116,9 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_group(chat_id)
 
         try:
-            await context.bot.send_message(
-                chat_id,
-                "hii… main Deepsikha hu 😏"
-            )
+            await context.bot.send_message(chat_id, "hii… main Deepsikha hu 😏")
         except:
             pass
-
-
-# ================= WELCOME =================
-
-async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.new_chat_members:
-        return
-
-    for member in update.message.new_chat_members:
-        await asyncio.sleep(random.randint(1, 2))
-
-        await update.message.reply_text(random.choice([
-            f"{member.first_name}… late aaye ho 😏",
-            f"welcome {member.first_name} 😌",
-            f"{member.first_name} aa gaye 😏",
-        ]))
-
-
-# ================= BROADCAST =================
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != OWNER_ID:
-        return
-
-    msg = " ".join(context.args)
-
-    if not msg:
-        return await update.message.reply_text("message bhejo")
-
-    sent, failed = 0, 0
-
-    for chat_id in get_groups():
-        try:
-            await context.bot.send_message(chat_id, msg)
-            sent += 1
-        except:
-            failed += 1
-
-    await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
 
 
 # ================= MAIN =================
@@ -227,23 +184,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply)
 
-        # ================= STICKER (STRONG) =================
+        # ================= RELATIONSHIP STICKER SYSTEM =================
         try:
+            user_data = users.find_one({"user_id": user.id}) or {}
+            relationship = int(user_data.get("relationship", 0))
+
             combined = (text + " " + reply).lower()
             mood = detect_reply_mood(reply)
 
-            if "love" in combined:
+            # keyword override
+            if any(x in combined for x in ["love", "miss", "jaan", "baby"]):
                 mood = "love"
-            elif "sad" in combined:
+            elif any(x in combined for x in ["sad", "cry", "alone", "hurt"]):
                 mood = "cry"
-            elif "kiss" in combined:
+            elif any(x in combined for x in ["kiss", "mwah"]):
                 mood = "kiss"
-            elif "angry" in combined or "ignore" in combined:
+            elif any(x in combined for x in ["angry", "ignore", "attitude"]):
                 mood = "angry"
+            else:
+                mood = "cute"
 
-            if mood in STICKERS and STICKERS[mood]:
-                if random.randint(1, 100) <= 70:
-                    await context.bot.send_sticker(chat_id, random.choice(STICKERS[mood]))
+            # user force
+            force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
+
+            # relationship based chance
+            if relationship < 30:
+                chance = 10
+            elif relationship < 70:
+                chance = 25
+            elif relationship < 120:
+                chance = 45
+            else:
+                chance = 70
+
+            # flirty boost
+            if mood in ["love", "kiss"] and relationship > 80:
+                chance += 20
+
+            chance = min(chance, 90)
+
+            send = True if force else random.randint(1, 100) <= chance
+
+            if send and mood in STICKERS and STICKERS[mood]:
+                selected = random.choice(STICKERS[mood])
+
+                if selected.startswith("http"):
+                    await context.bot.send_animation(chat_id, selected)
+                else:
+                    await context.bot.send_sticker(chat_id, selected)
 
         except Exception as e:
             print("Sticker error:", e)
@@ -272,7 +260,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
         try:
             last = context.application.bot_data.get(chat_id, 0)
 
-            if time.time() - last > 900:  # 🔥 less spam
+            if time.time() - last > 900:
                 continue
 
             if random.randint(1, 100) > 3:
@@ -296,15 +284,13 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard))
 
     app.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
-
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     app.job_queue.run_repeating(auto_message, interval=1800, first=120)
 
     print("Bot running... 🚀")
     app.run_polling(drop_pending_updates=True)
-    
+
 
 if __name__ == "__main__":
     main()
