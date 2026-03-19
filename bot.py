@@ -85,6 +85,29 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
 
 
+# ================= BROADCAST =================
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        return
+
+    msg = " ".join(context.args)
+
+    if not msg:
+        return await update.message.reply_text("message bhejo")
+
+    sent, failed = 0, 0
+
+    for chat_id in get_groups():
+        try:
+            await context.bot.send_message(chat_id, msg)
+            sent += 1
+        except:
+            failed += 1
+
+    await update.message.reply_text(f"done 😏\nsent: {sent}\nfailed: {failed}")
+
+
 # ================= DATABASE =================
 
 async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -184,7 +207,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(reply)
 
-        # ================= RELATIONSHIP STICKER SYSTEM =================
+        # ================= RELATIONSHIP STICKER =================
         try:
             user_data = users.find_one({"user_id": user.id}) or {}
             relationship = int(user_data.get("relationship", 0))
@@ -192,7 +215,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             combined = (text + " " + reply).lower()
             mood = detect_reply_mood(reply)
 
-            # keyword override
             if any(x in combined for x in ["love", "miss", "jaan", "baby"]):
                 mood = "love"
             elif any(x in combined for x in ["sad", "cry", "alone", "hurt"]):
@@ -204,10 +226,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 mood = "cute"
 
-            # user force
             force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
 
-            # relationship based chance
             if relationship < 30:
                 chance = 10
             elif relationship < 70:
@@ -217,7 +237,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 chance = 70
 
-            # flirty boost
             if mood in ["love", "kiss"] and relationship > 80:
                 chance += 20
 
