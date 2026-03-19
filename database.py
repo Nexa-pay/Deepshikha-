@@ -47,6 +47,7 @@ def update_user(user_id, name):
             {
                 "$setOnInsert": {
                     "user_id": user_id,
+                    "saved_name": None,   # 🔥 user ka actual name
                     "last_seen": now,
                     "attachment": 0,
                     "relationship": 0,
@@ -62,15 +63,17 @@ def update_user(user_id, name):
                     "trial_expiry": 0,
                     "ref_by": None,
                     "ref_count": 0,
-                    "last_sticker": None
+                    "last_sticker": None,
+                    "nicknames": [],          # 🔥 future use
+                    "last_nickname": None
                 },
 
                 "$set": {
-                    "name": name if name else "user",
+                    "name": name if name else "user",        # telegram name
+                    "display_name": name if name else "user", # safe display
                     "last_active": now
                 },
 
-                # 🔥 ONLY HERE → NO CONFLICT EVER
                 "$inc": {
                     "messages": 1
                 }
@@ -80,6 +83,27 @@ def update_user(user_id, name):
 
     except Exception as e:
         print("DB update error:", e)
+
+
+# ================= NAME SYSTEM =================
+
+def save_user_name(user_id, name):
+    try:
+        users.update_one(
+            {"user_id": user_id},
+            {"$set": {"saved_name": name}}
+        )
+    except Exception as e:
+        print("Save name error:", e)
+
+
+def get_saved_name(user_id):
+    try:
+        user = users.find_one({"user_id": user_id})
+        return user.get("saved_name") if user else None
+    except Exception as e:
+        print("Get name error:", e)
+        return None
 
 
 # ================= SAFE WRAPPER =================
@@ -118,10 +142,7 @@ def use_tokens(user_id, amount):
     try:
         user = users.find_one({"user_id": user_id})
 
-        if not user:
-            return False
-
-        if user.get("tokens", 0) < amount:
+        if not user or user.get("tokens", 0) < amount:
             return False
 
         users.update_one(
@@ -211,7 +232,7 @@ def has_access(user):
         return False
 
 
-# ================= REFERRAL SYSTEM =================
+# ================= REFERRAL =================
 
 def add_referral(new_user_id, referrer_id):
     try:
