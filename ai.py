@@ -83,6 +83,26 @@ def is_meaningful(text):
     return False
 
 
+# ================= NEW FIX =================
+def is_question(text):
+    t = text.lower()
+
+    keywords = [
+        "who", "what", "when", "where", "why", "how",
+        "kaun", "kya", "kab", "kaha", "kaise",
+        "pm", "president", "capital", "india", "country",
+        "name", "time", "date"
+    ]
+
+    if any(k in t for k in keywords):
+        return True
+
+    if "?" in t:
+        return True
+
+    return False
+
+
 # ================= TYPE =================
 
 def detect_type(text):
@@ -95,7 +115,7 @@ def detect_type(text):
         return "question"
 
     # ✅ FIXED
-    if len(t.split()) <= 2 and not is_meaningful(text):
+    if len(t.split()) <= 2 and not is_meaningful(text) and not is_question(text):
         return "dry"
 
     return "normal"
@@ -188,7 +208,7 @@ async def generate_reply(user_id, name, text):
             ])
 
         # ================= FIXED DRY =================
-        if len(text_lower.split()) <= 2 and not is_meaningful(text):
+        if len(text_lower.split()) <= 2 and not is_meaningful(text) and not is_question(text):
             return random.choice([
                 "itna dry reply kyun 😌",
                 "thoda aur bolo na 🙂",
@@ -263,6 +283,10 @@ async def generate_reply(user_id, name, text):
         if night:
             mood += ", soft romantic"
 
+        # ✅ NEW FIX: SMART MODE
+        if is_question(text):
+            mood = "smart helpful"
+
         new_secrets = extract_secrets(text)
 
         if new_secrets:
@@ -293,13 +317,14 @@ STYLE:
 - warm + human-like
 
 BEHAVIOR:
-- user की feelings समझो
-- अगर sad → comfort करो
-- अगर dry → softly pull attention
+- agar user question pooche → clearly answer do
+- agar normal baat ho → flirty + emotional
+- agar sad → comfort karo
 
 RULES:
 - Hinglish only
 - no rude words
+- no explanation
 - never say you are bot
 
 MOOD: {mood}
