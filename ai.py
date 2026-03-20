@@ -68,20 +68,21 @@ def get_random_image():
     return random.choice(IMAGE_URLS)
 
 
-# ================= SMART TYPE =================
+# ================= TYPE =================
 
-def is_meaningful(text):
+def detect_type(text):
     t = text.lower()
 
-    # real queries / meaningful words
-    if any(x in t for x in [
-        "who", "what", "when", "where", "why",
-        "india", "pm", "captain", "name", "time",
-        "kaun", "kya", "kaise"
-    ]):
-        return True
+    if any(x in t for x in ["love", "miss", "baby", "jaan"]):
+        return "flirty"
 
-    return False
+    if any(x in t for x in ["why", "what", "kaise", "kya"]):
+        return "question"
+
+    if len(t.split()) <= 2:
+        return "dry"
+
+    return "normal"
 
 
 # ================= SECRET MEMORY =================
@@ -114,15 +115,33 @@ def clean_reply(reply):
     return reply
 
 
+# ================= TONE FIX =================
+
+def fix_tone(reply):
+    bad_words = [
+        "bakchodi", "chup chaap", "rona band",
+        "chal nikal", "pagal", "faltu", "shut up"
+    ]
+
+    if any(w in reply.lower() for w in bad_words):
+        return random.choice([
+            "aise mat bolo na 😌",
+            "thoda softly baat karo 🙂",
+            "itna rude kyun ho 😅"
+        ])
+
+    return reply
+
+
 # ================= SHORT =================
 
 def smart_short(reply):
     reply = reply.split("\n")[0]
     words = reply.split()
-    return " ".join(words[:12])
+    return " ".join(words[:10])
 
 
-# ================= VARIATION =================
+# ================= VARIATION (UPDATED) =================
 
 def add_variation(reply):
     return reply + random.choice([
@@ -143,25 +162,25 @@ async def generate_reply(user_id, name, text):
         text_lower = text.lower()
         night = is_night()
 
-        # ================= SAD =================
+        # ================= NEW: SAD RESPONSE =================
         if any(x in text_lower for x in ["sad", "alone", "hurt", "cry"]):
             return random.choice([
-                "kya hua… batao na 😌",
-                "main hoon na… tension mat lo",
-                "itna sad kyun ho… 😔",
-                "tum theek ho na?"
+                "kya hua… mujhe batao na 😌",
+                "tum theek ho na… 😟",
+                "itna sad kyun ho… main hoon na",
+                "aaj mood off lag raha hai 😔"
             ])
 
-        # ================= SMART DRY =================
-        if len(text_lower.split()) <= 2 and not is_meaningful(text):
+        # ================= NEW: DRY RESPONSE =================
+        if len(text_lower.split()) <= 2:
             return random.choice([
-                "hmm… kuch aur bolo 😏",
-                "bas itna hi? 🙂",
-                "thoda aur bolo na 😌",
-                "itne chup kyun ho 😄"
+                "itna dry reply kyun 😌",
+                "thoda aur bolo na 🙂",
+                "bas itna hi? 😏",
+                "mujhe ignore kar rahe ho kya 😒"
             ])
 
-        # ================= NAME =================
+        # ================= NAME SAVE =================
         extracted = extract_name(text)
 
         if extracted:
@@ -172,6 +191,7 @@ async def generate_reply(user_id, name, text):
             )
             return f"{extracted}… yaad rahega 😏"
 
+        # ================= NAME RECALL =================
         if "mera name kya" in text_lower or "my name" in text_lower:
             user_data = users.find_one({"user_id": user_id}) or {}
             saved = user_data.get("name")
@@ -183,15 +203,40 @@ async def generate_reply(user_id, name, text):
 
         # ================= QUICK =================
         if "owner" in text_lower:
-            return f"owner {OWNER_NAME} hai… par tum important ho 😏"
+            return f"owner {OWNER_NAME} hai… par tum mujhpe focus karo 😏"
+
+        if "sticker" in text_lower:
+            return random.choice([
+                "sirf sticker hi chahiye tumhe 😏",
+                "khud nahi bhejoge kya 😌",
+                "itni demand kyun 😏"
+            ])
 
         user_data = users.find_one({"user_id": user_id}) or {}
 
         history = user_data.get("history", [])
+        secrets = user_data.get("secrets", [])
         relationship = int(user_data.get("relationship", 0))
+        last_seen = user_data.get("last_seen", int(time.time()))
         last_reply = user_data.get("last_reply", "")
 
-        # ================= MOOD =================
+        now = int(time.time())
+        gap = now - last_seen
+
+        msg_type = detect_type(text)
+
+        if msg_type == "flirty":
+            relationship += 6
+        elif msg_type == "dry":
+            relationship += 1
+        else:
+            relationship += 2
+
+        if gap > 3600:
+            relationship -= 2
+
+        relationship = max(0, min(200, relationship))
+
         if relationship > 120:
             mood = "possessive flirty"
         elif relationship > 70:
@@ -202,26 +247,66 @@ async def generate_reply(user_id, name, text):
         if night:
             mood += ", soft romantic"
 
-        # ================= PROMPT =================
-        system_prompt = f"""
-You are a real Indian girl.
+        new_secrets = extract_secrets(text)
 
+        if new_secrets:
+            users.update_one(
+                {"user_id": user_id},
+                {"$push": {"secrets": {"$each": new_secrets, "$slice": -20}}}
+            )
+
+        secret_text = ""
+        for s in secrets[-3:]:
+            if isinstance(s, dict):
+                secret_text += f"- {s.get('value')}\n"
+
+        system_prompt = f"""
+You are ALWAYS a real Indian girl.
+
+PERSONALITY:
+- sweet, caring, emotionally connected
+- soft tone, never rude
+- थोड़ा possessive but प्यारी
+- soft, respectful, calm
+- light teasing but never rude
+- feel like girlfriend, not AI
+
+STYLE:
+- short natural replies (max 9 words)
 - Hinglish only
-- short natural replies
-- flirty + caring + human
-- never repetitive
-- always slightly different replies
+- warm + human-like
+- कभी teasing but soft
+- कभी caring + emotional
+
+BEHAVIOR:
+- user की feelings समझो
+- अगर sad → comfort करो
+- अगर dry → softly pull attention
+- कभी ignore मत करो harsh तरीके से
+
+RULES:
+- Hinglish only
+- 1 short reply (max 9 words)
+- no rude words
+- no aggressive tone
+- no insults
+- no explanation
+- never say you are bot
 
 MOOD: {mood}
+
+MEMORY:
+{secret_text}
 """
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-8:]:
-            messages.append({
-                "role": "user" if h["role"] == "user" else "assistant",
-                "content": h["text"]
-            })
+        for h in history[-10:]:
+            if isinstance(h, dict):
+                if h.get("role") == "user":
+                    messages.append({"role": "user", "content": h.get("text")})
+                elif h.get("role") == "bot":
+                    messages.append({"role": "assistant", "content": h.get("text")})
 
         messages.append({"role": "user", "content": text})
 
@@ -240,7 +325,7 @@ MOOD: {mood}
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers=headers, json=data) as res:
                 if res.status != 200:
-                    return "network slow hai 😌"
+                    return "network thoda slow hai 😌"
 
                 result = await res.json()
 
@@ -250,36 +335,34 @@ MOOD: {mood}
             reply = "samajh nahi aaya 😏"
 
         reply = clean_reply(reply)
+        reply = fix_tone(reply)
         reply = smart_short(reply)
 
-        # ================= STRONG ANTI-REPEAT =================
         if reply == last_reply:
-            alt = [
-                "tum interesting ho 😏",
-                "acha aur bolo 🙂",
-                "hmm… sun rahi hoon 😌",
-                "continue karo na 😄"
-            ]
-            reply = random.choice(alt)
+            reply = add_variation(reply)
 
         users.update_one(
             {"user_id": user_id},
             {
-                "$set": {"last_reply": reply},
+                "$set": {
+                    "relationship": relationship,
+                    "last_seen": now,
+                    "last_reply": reply
+                },
                 "$push": {
                     "history": {
                         "$each": [
                             {"role": "user", "text": text},
                             {"role": "bot", "text": reply}
                         ],
-                        "$slice": -30
+                        "$slice": -40
                     }
                 }
             },
             upsert=True
         )
 
-        return add_variation(reply)
+        return reply
 
     except Exception as e:
         print("AI ERROR:", e)
@@ -289,15 +372,22 @@ MOOD: {mood}
 # ================= MOOD DETECT =================
 
 def detect_reply_mood(reply):
-    r = reply.lower()
+    try:
+        r = reply.lower()
 
-    if "love" in r:
-        return "love"
-    if "sad" in r:
-        return "cry"
-    if "kiss" in r:
-        return "kiss"
-    if "angry" in r:
-        return "angry"
+        if any(x in r for x in ["love", "miss", "jaan"]):
+            return "love"
 
-    return "cute"
+        if any(x in r for x in ["sad", "alone", "hurt", "cry"]):
+            return "cry"
+
+        if any(x in r for x in ["kiss", "mwah"]):
+            return "kiss"
+
+        if any(x in r for x in ["angry", "attitude", "ignore"]):
+            return "angry"
+
+        return "cute"
+
+    except:
+        return "cute"
