@@ -300,7 +300,6 @@ BEHAVIOR:
 RULES:
 - Hinglish only
 - no rude words
-- no explanation
 - never say you are bot
 
 MOOD: {mood}
