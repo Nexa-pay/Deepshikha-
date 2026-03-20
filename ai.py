@@ -68,6 +68,21 @@ def get_random_image():
     return random.choice(IMAGE_URLS)
 
 
+# ================= SMART CHECK =================
+
+def is_meaningful(text):
+    t = text.lower()
+
+    if any(x in t for x in [
+        "who", "what", "when", "where", "why",
+        "india", "pm", "captain", "name", "time",
+        "kaun", "kya", "kaise"
+    ]):
+        return True
+
+    return False
+
+
 # ================= TYPE =================
 
 def detect_type(text):
@@ -79,7 +94,8 @@ def detect_type(text):
     if any(x in t for x in ["why", "what", "kaise", "kya"]):
         return "question"
 
-    if len(t.split()) <= 2:
+    # ✅ FIXED
+    if len(t.split()) <= 2 and not is_meaningful(text):
         return "dry"
 
     return "normal"
@@ -141,7 +157,7 @@ def smart_short(reply):
     return " ".join(words[:10])
 
 
-# ================= VARIATION (UPDATED) =================
+# ================= VARIATION =================
 
 def add_variation(reply):
     return reply + random.choice([
@@ -162,7 +178,7 @@ async def generate_reply(user_id, name, text):
         text_lower = text.lower()
         night = is_night()
 
-        # ================= NEW: SAD RESPONSE =================
+        # ================= SAD =================
         if any(x in text_lower for x in ["sad", "alone", "hurt", "cry"]):
             return random.choice([
                 "kya hua… mujhe batao na 😌",
@@ -171,8 +187,8 @@ async def generate_reply(user_id, name, text):
                 "aaj mood off lag raha hai 😔"
             ])
 
-        # ================= NEW: DRY RESPONSE =================
-        if len(text_lower.split()) <= 2:
+        # ================= FIXED DRY =================
+        if len(text_lower.split()) <= 2 and not is_meaningful(text):
             return random.choice([
                 "itna dry reply kyun 😌",
                 "thoda aur bolo na 🙂",
@@ -275,21 +291,15 @@ STYLE:
 - short natural replies (max 9 words)
 - Hinglish only
 - warm + human-like
-- कभी teasing but soft
-- कभी caring + emotional
 
 BEHAVIOR:
 - user की feelings समझो
 - अगर sad → comfort करो
 - अगर dry → softly pull attention
-- कभी ignore मत करो harsh तरीके से
 
 RULES:
 - Hinglish only
-- 1 short reply (max 9 words)
 - no rude words
-- no aggressive tone
-- no insults
 - no explanation
 - never say you are bot
 
@@ -338,8 +348,14 @@ MEMORY:
         reply = fix_tone(reply)
         reply = smart_short(reply)
 
+        # ✅ FIXED REPEAT
         if reply == last_reply:
-            reply = add_variation(reply)
+            reply = random.choice([
+                "acha aur bolo 😏",
+                "hmm… interesting 😌",
+                "continue karo 🙂",
+                "tum interesting ho 😄"
+            ])
 
         users.update_one(
             {"user_id": user_id},
