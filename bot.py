@@ -3,6 +3,15 @@ import random
 import asyncio
 import time
 
+from database import (
+    update_user,
+    users,
+    save_group,
+    get_groups,
+    get_top_users,
+    get_all_users   # ✅ ADD THIS
+)
+
 from telegram import Update, ChatMemberUpdated
 from telegram.constants import ChatAction  # ✅ FIX
 from telegram.ext import (
