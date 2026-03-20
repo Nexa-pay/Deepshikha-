@@ -94,7 +94,7 @@ def init_memory(app):
     if "last_activity" not in app.bot_data:
         app.bot_data["last_activity"] = {}
 
-    if "active_users" not in app.bot_data:   # ✅ NEW
+    if "active_users" not in app.bot_data:
         app.bot_data["active_users"] = {}
 
 
@@ -237,7 +237,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         update_user(user.id, user.first_name)
 
-        # ✅ ACTIVE USERS TRACK
+        # ACTIVE USERS
         user_list = context.application.bot_data["active_users"].setdefault(chat_id, [])
         if user.id not in user_list:
             user_list.append(user.id)
@@ -249,6 +249,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_photo(chat_id, get_random_image())
             else:
                 await update.message.reply_text("itni jaldi photo? 😏")
+            return
+
+        # ✅ QUICK REPLIES (ADDED ONLY THIS)
+        if any(x in text_lower for x in ["hi", "hello", "hey"]):
+            await update.message.reply_text(random.choice([
+                "hii… tum yaad aaye 😌",
+                "hello… finally aaye 😏",
+                "hey… kahan the tum 🙂"
+            ]))
+            return
+
+        if "good morning" in text_lower:
+            await update.message.reply_text(random.choice([
+                "good morning… khayal rakhna 😌",
+                "morning… smile karo 🙂",
+                "gm… aaj mujhe yaad kiya? 😏"
+            ]))
+            return
+
+        if "good night" in text_lower:
+            await update.message.reply_text(random.choice([
+                "good night… sapno me aana 😌",
+                "gn… miss karungi 😏",
+                "jaldi sojao… main yahi hu 🙂"
+            ]))
+            return
+
+        if "bye" in text_lower:
+            await update.message.reply_text(random.choice([
+                "bye… jaldi aana 😌",
+                "itni jaldi ja rahe ho? 😏",
+                "theek hai… miss karungi 🙂"
+            ]))
+            return
+
+        if "dm" in text_lower:
+            await update.message.reply_text(random.choice([
+                "dm me aao na 😏",
+                "private me baat kare? 😌",
+                "yaha sab dekh rahe hain 🙂"
+            ]))
             return
 
         # TRIGGER
@@ -278,6 +319,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
+
         await update.message.reply_text(reply)
 
     except Exception as e:
