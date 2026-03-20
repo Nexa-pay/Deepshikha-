@@ -9,11 +9,11 @@ from database import (
     save_group,
     get_groups,
     get_top_users,
-    get_all_users   # ✅ ADD THIS
+    get_all_users
 )
 
 from telegram import Update, ChatMemberUpdated
-from telegram.constants import ChatAction  # ✅ FIX
+from telegram.constants import ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -32,7 +32,7 @@ from config import (
     ENABLE_VOICE
 )
 
-# ✅ SAFE IMPORT FIX
+# SAFE IMPORT
 try:
     from database import (
         update_user,
@@ -58,14 +58,44 @@ from voice import text_to_voice, delete_voice
 logging.basicConfig(level=logging.INFO)
 
 
-# ================= MEMORY =================
+# ================= NEW: FLIRTY TAG =================
+def get_flirty_tag(name, relationship):
+    if relationship > 150:
+        return random.choice([
+            f"{name}… tum sirf mere ho 😏",
+            f"{name}, ignore mat karo mujhe 💔",
+            f"{name}, main jealous ho jaungi 😒"
+        ])
+    elif relationship > 80:
+        return random.choice([
+            f"{name}… yaad aa rahe the 😌",
+            f"{name}, itne chup kyun ho 😏",
+            f"{name}, mujhe ignore kar rahe ho kya 🙂"
+        ])
+    elif relationship > 30:
+        return random.choice([
+            f"{name}, kya chal raha hai 😌",
+            f"{name}, baat nahi karoge? 🙂",
+            f"{name}, thoda active ho jao 😏"
+        ])
+    else:
+        return random.choice([
+            f"{name}, itna silent kyun 😄",
+            f"{name}, group me ho ya ghost 👻",
+            f"{name}, hello bol do 😌"
+        ])
 
+
+# ================= MEMORY =================
 def init_memory(app):
     if "last_replies" not in app.bot_data:
         app.bot_data["last_replies"] = {}
 
-    if "last_activity" not in app.bot_data:  # ✅ FIX
+    if "last_activity" not in app.bot_data:
         app.bot_data["last_activity"] = {}
+
+    if "active_users" not in app.bot_data:   # ✅ NEW
+        app.bot_data["active_users"] = {}
 
 
 # ================= STICKERS =================
@@ -98,7 +128,6 @@ STICKERS = load_stickers()
 
 
 # ================= START =================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -113,7 +142,6 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= BROADCAST =================
-
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
@@ -125,7 +153,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent, failed = 0, 0
 
-    # 🔥 USERS
     for user_id in get_all_users():
         try:
             await context.bot.send_message(user_id, msg)
@@ -133,7 +160,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             failed += 1
 
-    # 🔥 GROUPS
     for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, msg)
@@ -145,7 +171,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= DATABASE =================
-
 async def database_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = users.count_documents({})
     await update.message.reply_text(f"total users: {count}")
@@ -166,7 +191,6 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= BOT ADDED =================
-
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result: ChatMemberUpdated = update.my_chat_member
 
@@ -181,7 +205,6 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= MAIN =================
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not update.message:
@@ -190,8 +213,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         init_memory(context.application)
 
         chat_id = update.message.chat_id
-
-        # ✅ FIX (no overwrite)
         context.application.bot_data["last_activity"][chat_id] = time.time()
 
         if update.message.sticker:
@@ -208,9 +229,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text_lower = text.lower()
         chat_type = update.message.chat.type
 
-        # ✅ FIX (safe username)
         bot_username = (context.bot.username or "").lower()
-
         is_reply = update.message.reply_to_message
 
         if chat_type in ["group", "supergroup"]:
@@ -218,7 +237,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         update_user(user.id, user.first_name)
 
-        # ================= IMAGE =================
+        # ✅ ACTIVE USERS TRACK
+        user_list = context.application.bot_data["active_users"].setdefault(chat_id, [])
+        if user.id not in user_list:
+            user_list.append(user.id)
+        context.application.bot_data["active_users"][chat_id] = user_list[-20:]
+
+        # IMAGE
         if should_send_image(text):
             if random.randint(1, 100) <= PHOTO_CHANCE:
                 await context.bot.send_photo(chat_id, get_random_image())
@@ -226,7 +251,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("itni jaldi photo? 😏")
             return
 
-        # ================= TRIGGER =================
+        # TRIGGER
         triggered = (
             chat_type == "private"
             or f"@{bot_username}" in text_lower
@@ -237,89 +262,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not triggered:
             return
 
-        # ================= AI =================
         reply = await generate_reply(user.id, user.first_name, text)
 
-        # ================= ANTI-REPEAT =================
         history = context.application.bot_data["last_replies"].get(user.id, [])
-
-        tries = 0
-        while reply in history and tries < 2:
-            reply = await generate_reply(user.id, user.first_name, text)
-            tries += 1
-
         if reply in history:
             reply += random.choice([" 😏", " hmm", " acha"])
 
         history.append(reply)
         context.application.bot_data["last_replies"][user.id] = history[-5:]
 
-        # ================= DELAY =================
         delay = random.randint(MIN_DELAY, MAX_DELAY)
 
         for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)  # ✅ FIX
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
-
         await update.message.reply_text(reply)
-
-        # ================= SMART STICKER =================
-        try:
-            user_data = users.find_one({"user_id": user.id}) or {}
-            relationship = int(user_data.get("relationship", 0))
-
-            mood = detect_reply_mood(reply)
-
-            force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
-
-            if relationship < 30:
-                chance = 10
-            elif relationship < 70:
-                chance = 25
-            elif relationship < 120:
-                chance = 45
-            else:
-                chance = 70
-
-            if mood in ["love", "kiss"]:
-                chance += 15
-
-            chance = min(chance, 85)
-
-            send = True if force else random.randint(1, 100) <= chance
-
-            if send and mood in STICKERS and STICKERS[mood]:
-                selected = random.choice(STICKERS[mood])
-
-                if selected.startswith("http"):
-                    await context.bot.send_animation(chat_id, selected)
-                else:
-                    await context.bot.send_sticker(chat_id, selected)
-
-        except Exception as e:
-            print("Sticker error:", e)
-
-        # ================= VOICE =================
-        if ENABLE_VOICE and any(x in text_lower for x in ["voice", "bolo", "sunao", "audio"]):
-            voice_file = await text_to_voice(reply, user.id)
-
-            if voice_file:
-                try:
-                    with open(voice_file, "rb") as v:
-                        await context.bot.send_voice(chat_id, v)
-                except Exception as e:
-                    print("Voice error:", e)
-
-                delete_voice(voice_file)
 
     except Exception as e:
         print("Main handler error:", e)
 
 
 # ================= AUTO =================
-
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     for chat_id in get_groups():
         try:
@@ -331,14 +296,33 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
             if random.randint(1, 100) > 3:
                 continue
 
-            await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
+            active_users = context.application.bot_data.get("active_users", {}).get(chat_id, [])
 
-        except:
-            pass
+            if not active_users:
+                await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
+                continue
+
+            user_id = random.choice(active_users)
+            user_data = users.find_one({"user_id": user_id}) or {}
+            relationship = int(user_data.get("relationship", 0))
+
+            try:
+                member = await context.bot.get_chat_member(chat_id, user_id)
+                name = member.user.first_name
+
+                text = get_flirty_tag(name, relationship)
+                text += f" [{name}](tg://user?id={user_id})"
+
+                await context.bot.send_message(chat_id, text, parse_mode="Markdown")
+
+            except:
+                await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
+
+        except Exception as e:
+            print("Auto message error:", e)
 
 
 # ================= MAIN =================
-
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
