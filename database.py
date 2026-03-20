@@ -310,8 +310,11 @@ def clear_history(user_id):
         {"$set": {"history": []}}
     )
     return "Chat memory cleared 🧹"
-    
-    def get_all_users():
+
+
+# ================= GET ALL USERS (FIXED) =================
+
+def get_all_users():
     try:
         return [u["user_id"] for u in users.find({}, {"_id": 0, "user_id": 1})]
     except Exception as e:
