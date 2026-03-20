@@ -235,12 +235,10 @@ def smart_handler(user_id, text, telegram_name="user"):
     try:
         update_user(user_id, telegram_name)
 
-        # SAVE USER MSG
         save_chat(user_id, "user", text)
 
         text_l = text.lower()
 
-        # NAME
         name = extract_name(text)
         if name:
             save_user_name(user_id, name)
@@ -254,7 +252,6 @@ def smart_handler(user_id, text, telegram_name="user"):
             save_chat(user_id, "bot", reply)
             return reply
 
-        # NICKNAME
         nick = extract_nickname(text)
         if nick:
             save_nickname(user_id, nick)
@@ -262,7 +259,6 @@ def smart_handler(user_id, text, telegram_name="user"):
             save_chat(user_id, "bot", reply)
             return reply
 
-        # AGE
         age = extract_age(text)
         if age:
             save_memory(user_id, age=age)
@@ -270,7 +266,6 @@ def smart_handler(user_id, text, telegram_name="user"):
             save_chat(user_id, "bot", reply)
             return reply
 
-        # MOOD
         mood = extract_mood(text)
         if mood:
             save_memory(user_id, mood=mood)
@@ -278,7 +273,6 @@ def smart_handler(user_id, text, telegram_name="user"):
             save_chat(user_id, "bot", reply)
             return reply
 
-        # DEFAULT
         reply = flirty_reply(user_id)
         save_chat(user_id, "bot", reply)
         return reply
@@ -312,7 +306,21 @@ def clear_history(user_id):
     return "Chat memory cleared 🧹"
 
 
-# ================= GET ALL USERS (FIXED) =================
+# ================= LEADERBOARD (FIXED) =================
+
+def get_top_users(limit=10):
+    try:
+        return list(
+            users.find({}, {"_id": 0, "name": 1, "messages": 1})
+            .sort("messages", -1)
+            .limit(limit)
+        )
+    except Exception as e:
+        print("Top users error:", e)
+        return []
+
+
+# ================= GET ALL USERS =================
 
 def get_all_users():
     try:
