@@ -251,7 +251,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("itni jaldi photo? 😏")
             return
 
-        # ✅ QUICK REPLIES (ADDED ONLY THIS)
+        # QUICK REPLIES
         if any(x in text_lower for x in ["hi", "hello", "hey"]):
             await update.message.reply_text(random.choice([
                 "hii… tum yaad aaye 😌",
@@ -321,6 +321,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(delay / 2)
 
         await update.message.reply_text(reply)
+
+        # ================= SMART STICKER =================
+        try:
+            user_data = users.find_one({"user_id": user.id}) or {}
+            relationship = int(user_data.get("relationship", 0))
+
+            mood = detect_reply_mood(reply)
+
+            force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
+
+            if relationship < 30:
+                chance = 10
+            elif relationship < 70:
+                chance = 25
+            elif relationship < 120:
+                chance = 45
+            else:
+                chance = 70
+
+            if mood in ["love", "kiss"]:
+                chance += 15
+
+            chance = min(chance, 85)
+
+            send = True if force else random.randint(1, 100) <= chance
+
+            if send and mood in STICKERS and STICKERS[mood]:
+                selected = random.choice(STICKERS[mood])
+
+                if selected.startswith("http"):
+                    await context.bot.send_animation(chat_id, selected)
+                else:
+                    await context.bot.send_sticker(chat_id, selected)
+
+        except Exception as e:
+            print("Sticker error:", e)
 
     except Exception as e:
         print("Main handler error:", e)
