@@ -106,7 +106,7 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= BROADCAST =================
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or update.message.from_user.id != OWNER_ID:
+    if update.message.from_user.id != OWNER_ID:
         return
 
     msg = " ".join(context.args)
@@ -116,6 +116,15 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent, failed = 0, 0
 
+    # 🔥 USERS
+    for user_id in get_all_users():
+        try:
+            await context.bot.send_message(user_id, msg)
+            sent += 1
+        except:
+            failed += 1
+
+    # 🔥 GROUPS
     for chat_id in get_groups():
         try:
             await context.bot.send_message(chat_id, msg)
