@@ -1,5 +1,4 @@
 import aiohttp
-import time
 import random
 import re
 from datetime import datetime
@@ -57,43 +56,51 @@ async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
 
-        # ================= HARD FACT FIX =================
+        # ================= HARD FACT (WITH STYLE) =================
         if "pm" in text_lower and "india" in text_lower:
-            return "Narendra Modi is current Prime Minister of India"
+            return "Narendra Modi PM hai… par tum zyada interesting 😏"
 
         if "president" in text_lower and "india" in text_lower:
-            return "Droupadi Murmu is current President of India"
+            return "Droupadi Murmu president hai… khush? 😌"
 
-        # ================= DB =================
+        # ================= USER DATA =================
         user_data = users.find_one({"user_id": user_id}) or {}
         history = user_data.get("history", [])
         last_reply = user_data.get("last_reply", "")
 
-        # ================= PROMPT =================
+        # ================= MODE =================
         if is_question(text):
             system_prompt = """
-You are a helpful assistant.
+You are a smart Indian girl.
 
-Answer correctly and clearly.
-No flirting.
-Short factual reply only.
+RULES:
+- Answer correctly
+- Add slight teasing
+- Max 10 words
+- Hinglish only
+- No explanation
+- No assistant tone
 """
         else:
             system_prompt = """
-You are a normal human.
+You are a real Indian girl chatting.
 
-Reply naturally and relevant to user message.
-No random lines.
-Short and clean reply.
+RULES:
+- Flirty, teasing, natural
+- Reply only relevant to message
+- No random nonsense
+- Hinglish only
+- Max 10 words
 """
 
         messages = [{"role": "system", "content": system_prompt}]
 
         for h in history[-10:]:
-            if h.get("role") == "user":
-                messages.append({"role": "user", "content": h.get("text")})
-            elif h.get("role") == "bot":
-                messages.append({"role": "assistant", "content": h.get("text")})
+            if isinstance(h, dict):
+                messages.append({
+                    "role": "assistant" if h.get("role") == "bot" else "user",
+                    "content": h.get("text")
+                })
 
         messages.append({"role": "user", "content": text})
 
@@ -110,20 +117,24 @@ Short and clean reply.
             }) as res:
 
                 if res.status != 200:
-                    return "mujhe abhi info nahi mil pa rahi 😔"
+                    return "hmm… tum kuch alag ho 😏"
 
                 result = await res.json()
 
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            return "samajh nahi aaya 🙂"
+            return "samajh nahi aaya… fir bolo 😌"
 
         reply = clean_reply(reply)
 
         # ================= ANTI REPEAT =================
-        if not is_question(text) and (reply == last_reply):
-            reply = "hmm samjha 🙂"
+        if reply == last_reply:
+            reply = random.choice([
+                "repeat mat karo 😏",
+                "same baat phir se? 😌",
+                "kuch naya bolo 🙂"
+            ])
 
         # ================= SAVE =================
         users.update_one(
@@ -147,9 +158,9 @@ Short and clean reply.
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "thoda issue ho gaya 😔"
+        return "hmm… mood off hai thoda 😌"
 
 
-# ================= MOOD =================
+# ================= MOOD DETECT =================
 def detect_reply_mood(reply):
     return "cute"
