@@ -26,6 +26,19 @@ def is_night():
     return hour >= 23 or hour <= 5
 
 
+# ================= IMAGE (FIX ADDED) =================
+
+IMAGE_URLS = [
+    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
+]
+
+def should_send_image(text):
+    return any(x in text.lower() for x in ["photo", "pic", "selfie", "image"])
+
+def get_random_image():
+    return random.choice(IMAGE_URLS)
+
+
 # ================= SMART =================
 
 def is_meaningful(text):
