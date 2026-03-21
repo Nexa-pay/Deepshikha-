@@ -1,4 +1,5 @@
 import os
+
 OWNER_NAME = "Aakash"
 
 # ================= SAFE ENV GET =================
@@ -41,7 +42,7 @@ OPENROUTER_API_KEY = get_env("OPENROUTER_API_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
 MONGO_URI = get_env("MONGO_URI")
 
-# optional now (Edge TTS use ho raha hai)
+# optional (voice)
 ELEVENLABS_API_KEY = get_env("ELEVENLABS_API_KEY", None)
 
 
@@ -64,11 +65,14 @@ OWNER_ID = get_env("OWNER_ID", 123456789, int)
 
 # ================= AI CONFIG =================
 
+# 🔥 KEEP YOUR MODEL (safe)
 MODEL = get_env("MODEL", "deepseek/deepseek-chat")
 
-TEMPERATURE = clamp(get_env("TEMPERATURE", 0.75, float), 0.1, 1.5)
-MAX_TOKENS = clamp(get_env("MAX_TOKENS", 60, int), 20, 120)  
-# 🔥 reduced → short replies fix
+# 🔥 slightly stable (no big change)
+TEMPERATURE = clamp(get_env("TEMPERATURE", 0.7, float), 0.1, 1.5)
+
+# 🔥 small increase (better replies, not too long)
+MAX_TOKENS = clamp(get_env("MAX_TOKENS", 70, int), 20, 120)
 
 CREATIVITY_MODE = get_env("CREATIVITY_MODE", "balanced")
 
@@ -101,18 +105,14 @@ LOVE_THRESHOLD = clamp(get_env("LOVE_THRESHOLD", 120, int), 20, 300)
 # ================= MEDIA CONTROL =================
 
 PHOTO_CHANCE = clamp(get_env("PHOTO_CHANCE", 40, int), 0, 100)
-STICKER_CHANCE = clamp(get_env("STICKER_CHANCE", 50, int), 0, 100)  
-# 🔥 increased → sticker fix
+STICKER_CHANCE = clamp(get_env("STICKER_CHANCE", 50, int), 0, 100)
 
 
 # ================= VOICE CONFIG =================
 
-# 🔥 Edge TTS friendly (Elevenlabs ignore now)
 VOICE_ID = get_env("VOICE_ID", "edge_default")
-
 VOICE_MODEL = get_env("VOICE_MODEL", "edge")
-
-VOICE_STYLE = get_env("VOICE_STYLE", "soft")  # soft / normal
+VOICE_STYLE = get_env("VOICE_STYLE", "soft")
 
 
 # ================= FEATURE TOGGLES =================
