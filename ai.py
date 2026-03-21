@@ -1,153 +1,253 @@
 import aiohttp
-import random
-import re
-from datetime import datetime
-import pytz
-
-from config import (
-    OPENROUTER_API_KEY,
-    MODEL,
-    TEMPERATURE,
-    MAX_TOKENS
-)
-
+import time
+from config import OPENROUTER_API_KEY
 from database import users
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-# ================= TIME =================
-def is_night():
-    india = pytz.timezone("Asia/Kolkata")
-    return datetime.now(india).hour >= 23 or datetime.now(india).hour <= 5
+# ================= MESSAGE TYPE =================
+
+def detect_type(text):
+    text = text.lower()
+
+    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
+        return "flirty"
+    elif any(x in text for x in ["why", "what", "who", "kaise", "kya"]):
+        return "question"
+    elif len(text.split()) <= 2:
+        return "dry"
+    else:
+        return "normal"
 
 
-# ================= IMAGE =================
-IMAGE_URLS = [
-    "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
-]
+# ================= PERSONALITY =================
 
-def should_send_image(text):
-    return any(x in text.lower() for x in ["photo", "pic", "selfie", "image"])
+def analyze_user(text):
+    text = text.lower()
 
-def get_random_image():
-    return random.choice(IMAGE_URLS)
+    personality = "normal"
+    topics = []
 
+    if any(x in text for x in ["love", "miss", "baby", "jaan"]):
+        personality = "flirty"
+        topics.append("love")
 
-# ================= SMART =================
-def is_question(text):
-    t = text.lower()
-    return any(k in t for k in [
-        "who","what","when","where","why","how",
-        "kaun","kya","kab","kaha","kaise",
-        "pm","president","capital","india"
-    ]) or "?" in t
+    elif any(x in text for x in ["sad", "alone", "hurt"]):
+        personality = "emotional"
+        topics.append("emotions")
 
+    elif any(x in text for x in ["money", "earn", "business"]):
+        topics.append("money")
 
-# ================= CLEAN =================
-def clean_reply(reply):
-    reply = re.sub(r"\*.*?\*", "", reply)
-    reply = re.sub(r"\(.*?\)", "", reply)
-    return re.sub(r"\s+", " ", reply).strip()
+    elif len(text.split()) <= 2:
+        personality = "dry"
+
+    return personality, topics
 
 
-# ================= MAIN =================
+# ================= TIME GAP =================
+
+def get_gap(last_time):
+    try:
+        if not last_time:
+            return 0
+        if isinstance(last_time, str):
+            last_time = int(last_time)
+        return int(time.time()) - last_time
+    except:
+        return 0
+
+
+# ================= MAIN AI =================
+
 async def generate_reply(user_id, name, text):
     try:
-        text_lower = text.lower()
-
-        # ================= HARD FACT (WITH STYLE) =================
-        if "pm" in text_lower and "india" in text_lower:
-            return "Narendra Modi PM hai… par tum zyada interesting 😏"
-
-        if "president" in text_lower and "india" in text_lower:
-            return "Droupadi Murmu president hai… khush? 😌"
-
-        # ================= USER DATA =================
         user_data = users.find_one({"user_id": user_id}) or {}
+
+        attachment = user_data.get("attachment", 0)
+        relationship = user_data.get("relationship", 0)
+        ignore_count = user_data.get("ignore_count", 0)
+
         history = user_data.get("history", [])
-        last_reply = user_data.get("last_reply", "")
+        last_seen = user_data.get("last_seen")
 
-        # ================= MODE =================
-        if is_question(text):
-            system_prompt = """
-You are a smart Indian girl.
+        personality_data = user_data.get("personality", {})
+        fav_data = user_data.get("favorites", {})
 
-RULES:
-- Answer correctly
-- Add slight teasing
-- Max 10 words
-- Hinglish only
-- No explanation
-- No assistant tone
-"""
+        now = int(time.time())
+        gap = get_gap(last_seen)
+
+        msg_type = detect_type(text)
+        personality, topics = analyze_user(text)
+
+        # ================= RELATIONSHIP =================
+
+        if msg_type == "flirty":
+            attachment += 5
+            relationship += 5
+        elif msg_type == "dry":
+            attachment += 1
+            relationship += 1
+            ignore_count += 1
         else:
-            system_prompt = """
-You are a real Indian girl chatting.
+            attachment += 2
+            relationship += 2
 
-RULES:
-- Flirty, teasing, natural
-- Reply only relevant to message
-- No random nonsense
+        # ================= MOOD =================
+
+        if relationship > 100:
+            mood = "emotionally attached, slightly possessive"
+        elif relationship > 50:
+            mood = "soft flirty, interested"
+        else:
+            mood = "calm neutral"
+
+        # ================= COMEBACK =================
+
+        if gap > 86400:
+            comeback = "you noticed they were gone and slightly missed them"
+        elif gap > 21600:
+            comeback = "you noticed absence, slight attitude"
+        elif gap > 3600:
+            comeback = "soft warm comeback"
+        else:
+            comeback = "normal flow"
+
+        # ================= POSSESSIVE =================
+
+        possessive_hint = ""
+
+        if relationship > 80 and msg_type == "flirty":
+            possessive_hint = "use slight possessive teasing tone"
+        elif ignore_count > 5:
+            possessive_hint = "you feel ignored, show mild attitude"
+
+        # ================= USER PROFILE =================
+
+        user_type = personality_data.get("type", "normal")
+        fav_topics = ", ".join(fav_data.get("topics", []))
+
+        # ================= SYSTEM PROMPT =================
+
+        system_prompt = f"""
+You are a real girl chatting on Telegram.
+
+CORE RULES:
+- Reply ONLY based on user's message
+- Continue conversation naturally (VERY IMPORTANT)
+- Keep reply SHORT (1 line)
 - Hinglish only
-- Max 10 words
+
+STRICT BEHAVIOR:
+- NEVER be rude or abusive
+- NEVER insult user
+- NEVER use aggressive slang (like abe, bakwas, pagal)
+- Always sound natural and human
+
+CONFUSION HANDLING:
+- If message unclear → respond playfully, soft, slightly flirty
+- DO NOT get angry
+
+Examples:
+- "samajh nahi aaya… kya bol rahe ho 😏"
+- "itna confusing kyu bolte ho tum 😌"
+- "seedha bolo na… kya chahiye 😏"
+
+PERSONALITY:
+- calm, confident
+- slightly flirty when needed
+- emotionally intelligent
+- {mood}
+
+USER PROFILE:
+- Personality: {user_type}
+- Favorite topics: {fav_topics}
+
+EMOTIONAL MEMORY:
+- You remember past chats
+- If user ignores → slight attitude
+- If user comes back → react subtly
+- Build connection slowly
+
+COMEBACK STYLE:
+- {comeback}
+
+POSSESSIVE TONE:
+- {possessive_hint}
+
+IMPORTANT:
+- No cringe
+- No overacting
+- No emoji spam
+- Keep it smooth, natural, addictive
 """
+
+        # ================= BUILD HISTORY =================
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for h in history[-10:]:
-            if isinstance(h, dict):
+        for h in history[-15:]:
+            if h.startswith("User:"):
                 messages.append({
-                    "role": "assistant" if h.get("role") == "bot" else "user",
-                    "content": h.get("text")
+                    "role": "user",
+                    "content": h.replace("User: ", "")
+                })
+            elif h.startswith("Bot:"):
+                messages.append({
+                    "role": "assistant",
+                    "content": h.replace("Bot: ", "")
                 })
 
         messages.append({"role": "user", "content": text})
 
         # ================= API =================
+
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "model": "deepseek/deepseek-chat",
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 80
+        }
+
         async with aiohttp.ClientSession() as session:
-            async with session.post(API_URL, headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }, json={
-                "model": MODEL,
-                "messages": messages,
-                "temperature": TEMPERATURE,
-                "max_tokens": MAX_TOKENS
-            }) as res:
-
-                if res.status != 200:
-                    return "hmm… tum kuch alag ho 😏"
-
+            async with session.post(API_URL, headers=headers, json=data) as res:
                 result = await res.json()
 
         reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
         if not reply:
-            return "samajh nahi aaya… fir bolo 😌"
+            return "samajh nahi aaya… thoda clear bolo 😌"
 
-        reply = clean_reply(reply)
-
-        # ================= ANTI REPEAT =================
-        if reply == last_reply:
-            reply = random.choice([
-                "repeat mat karo 😏",
-                "same baat phir se? 😌",
-                "kuch naya bolo 🙂"
-            ])
+        reply = reply.strip()
 
         # ================= SAVE =================
+
         users.update_one(
             {"user_id": user_id},
             {
-                "$set": {"last_reply": reply},
+                "$set": {
+                    "attachment": attachment,
+                    "relationship": relationship,
+                    "ignore_count": ignore_count,
+                    "last_seen": now,
+                    "personality.type": personality
+                },
+                "$addToSet": {
+                    "favorites.topics": {"$each": topics}
+                },
                 "$push": {
                     "history": {
                         "$each": [
-                            {"role": "user", "text": text},
-                            {"role": "bot", "text": reply}
+                            f"User: {text}",
+                            f"Bot: {reply}"
                         ],
-                        "$slice": -40
+                        "$slice": -25
                     }
                 }
             },
@@ -158,9 +258,41 @@ RULES:
 
     except Exception as e:
         print("AI ERROR:", e)
-        return "hmm… mood off hai thoda 😌"
+        return "clear nahi hua… thoda aur clearly bolo 😌"
 
 
-# ================= MOOD DETECT =================
-def detect_reply_mood(reply):
-    return "cute"
+# ================= TAGALL =================
+
+async def generate_tag_message(name):
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        system_prompt = f"""
+Write 1 short Hinglish recall line for {name}
+
+Rules:
+- max 8 words
+- emotional or slight tease
+- natural
+"""
+
+        data = {
+            "model": "deepseek/deepseek-chat",
+            "messages": [
+                {"role": "system", "content": system_prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 30
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=headers, json=data) as res:
+                result = await res.json()
+
+        return result.get("choices", [{}])[0].get("message", {}).get("content", f"{name} kaha ho").strip()
+
+    except:
+        return f"{name} group bhool gaye kya"
