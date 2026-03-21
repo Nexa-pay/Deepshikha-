@@ -18,10 +18,15 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+# ================= TIME =================
+
 def is_night():
     india = pytz.timezone("Asia/Kolkata")
-    return datetime.now(india).hour >= 23 or datetime.now(india).hour <= 5
+    hour = datetime.now(india).hour
+    return hour >= 23 or hour <= 5
 
+
+# ================= SMART =================
 
 def is_meaningful(text):
     t = text.lower()
@@ -30,7 +35,6 @@ def is_meaningful(text):
         "india","pm","captain","name","time",
         "kaun","kya","kaise"
     ])
-
 
 def is_question(text):
     t = text.lower()
@@ -41,24 +45,30 @@ def is_question(text):
     ]) or "?" in t
 
 
+# ================= CLEAN =================
+
 def clean_reply(reply):
     reply = re.sub(r"\*.*?\*", "", reply)
     reply = re.sub(r"\(.*?\)", "", reply)
-    return re.sub(r"\s+", " ", reply).strip()
+    reply = re.sub(r"\s+", " ", reply).strip()
+    return reply
 
 
 def smart_short(reply):
     return " ".join(reply.split()[:12])
 
 
+# ================= MAIN =================
+
 async def generate_reply(user_id, name, text):
     try:
         text_lower = text.lower()
+        night = is_night()
 
-        # 🔥 SMART OVERRIDE (NOT HARD RETURN)
+        # ================= SOFT OVERRIDE =================
         forced_reply = None
 
-        if any(x in text_lower for x in ["sad","alone","hurt","cry"]):
+        if any(x in text_lower for x in ["sad", "alone", "hurt", "cry"]):
             forced_reply = random.choice([
                 "kya hua… mujhe batao na 😌",
                 "tum theek ho na… 😟",
@@ -75,11 +85,12 @@ async def generate_reply(user_id, name, text):
             ])
 
         user_data = users.find_one({"user_id": user_id}) or {}
+
         history = user_data.get("history", [])
         relationship = int(user_data.get("relationship", 0))
         last_reply = user_data.get("last_reply", "")
 
-        # 🔥 MOOD CONTROL
+        # ================= MOOD =================
         if is_question(text):
             mood = "smart helpful, slightly friendly"
         elif relationship > 120:
@@ -89,17 +100,26 @@ async def generate_reply(user_id, name, text):
         else:
             mood = "teasing"
 
-        system_prompt = f"""
-You are a real Indian girl.
+        if night:
+            mood += ", soft romantic"
 
-STYLE:
-- Hinglish
-- short natural replies
+        # ================= PROMPT =================
+        system_prompt = f"""
+You are ALWAYS a real Indian girl.
+
+PERSONALITY:
+- sweet, caring, emotional
+- natural Hinglish
+- not robotic
 
 BEHAVIOR:
-- question → correct answer (short + clear)
-- normal → flirty + emotional
-- never act like bot
+- if question → give correct answer
+- if normal → flirty + emotional
+- if sad → comfort
+
+RULES:
+- short replies
+- never say you are AI
 
 MOOD: {mood}
 """
@@ -107,13 +127,15 @@ MOOD: {mood}
         messages = [{"role": "system", "content": system_prompt}]
 
         for h in history[-10:]:
-            if h.get("role") == "user":
-                messages.append({"role": "user", "content": h.get("text")})
-            elif h.get("role") == "bot":
-                messages.append({"role": "assistant", "content": h.get("text")})
+            if isinstance(h, dict):
+                if h.get("role") == "user":
+                    messages.append({"role": "user", "content": h.get("text")})
+                elif h.get("role") == "bot":
+                    messages.append({"role": "assistant", "content": h.get("text")})
 
         messages.append({"role": "user", "content": text})
 
+        # ================= API =================
         async with aiohttp.ClientSession() as session:
             async with session.post(API_URL, headers={
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -130,27 +152,31 @@ MOOD: {mood}
 
                 result = await res.json()
 
-        reply = result.get("choices",[{}])[0].get("message",{}).get("content","samajh nahi aaya 😏")
+        reply = result.get("choices", [{}])[0].get("message", {}).get("content")
+
+        if not reply:
+            reply = "samajh nahi aaya 😏"
 
         reply = clean_reply(reply)
         reply = smart_short(reply)
 
-        # 🔥 ANTI REPEAT (REAL FIX)
-        recent = [h.get("text") for h in history[-6:] if h.get("role")=="bot"]
+        # ================= ANTI REPEAT =================
+        recent = [h.get("text") for h in history[-6:] if h.get("role") == "bot"]
 
         if reply in recent:
             reply = random.choice([
                 "acha aur bolo 😏",
-                "hmm interesting 😌",
+                "hmm… interesting 😌",
                 "continue karo 🙂",
                 "tum interesting ho 😄"
             ])
 
-        # 🔥 FORCE MERGE
+        # ================= MERGE =================
         if forced_reply and not is_question(text):
-            if random.randint(1,100) < 40:
+            if random.randint(1, 100) < 40:
                 reply = forced_reply
 
+        # ================= SAVE =================
         users.update_one(
             {"user_id": user_id},
             {
@@ -158,8 +184,8 @@ MOOD: {mood}
                 "$push": {
                     "history": {
                         "$each": [
-                            {"role":"user","text":text},
-                            {"role":"bot","text":reply}
+                            {"role": "user", "text": text},
+                            {"role": "bot", "text": reply}
                         ],
                         "$slice": -40
                     }
@@ -173,3 +199,27 @@ MOOD: {mood}
     except Exception as e:
         print("AI ERROR:", e)
         return "thoda glitch ho gaya 😌"
+
+
+# ================= MOOD DETECT =================
+
+def detect_reply_mood(reply):
+    try:
+        r = reply.lower()
+
+        if any(x in r for x in ["love", "miss", "jaan"]):
+            return "love"
+
+        if any(x in r for x in ["sad", "alone", "hurt", "cry"]):
+            return "cry"
+
+        if any(x in r for x in ["kiss", "mwah"]):
+            return "kiss"
+
+        if any(x in r for x in ["angry", "attitude", "ignore"]):
+            return "angry"
+
+        return "cute"
+
+    except:
+        return "cute"
