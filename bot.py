@@ -3,6 +3,7 @@ import logging
 import random
 import asyncio
 from telegram import Update, ChatMemberUpdated
+from telegram.constants import ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -12,15 +13,38 @@ from telegram.ext import (
     ChatMemberHandler,
 )
 
-from database import (
-    update_user,
-    get_top_users,
-    get_inactive_users,
-    users,
-    save_group,
-    get_groups
-)
-from ai import generate_reply, generate_tag_message
+# ================= SAFE DATABASE IMPORT =================
+try:
+    from database import (
+        update_user,
+        get_top_users,
+        get_inactive_users,
+        users,
+        save_group,
+        get_groups
+    )
+except ImportError:
+    from database import (
+        update_user,
+        get_top_users,
+        users,
+        save_group,
+        get_groups
+    )
+
+    # ✅ fallback if function missing
+    def get_inactive_users():
+        return []
+
+# ================= SAFE AI IMPORT =================
+try:
+    from ai import generate_reply, generate_tag_message
+except ImportError:
+    from ai import generate_reply
+
+    async def generate_tag_message(name):
+        return f"{name}… kahan ho 😏"
+
 
 # ================= CONFIG =================
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +54,6 @@ OWNER_ID = 123456789
 
 
 # ================= START =================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("hii… main Deepsikha hu 😏")
 
@@ -40,7 +63,6 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= AUTO GROUP DETECT =================
-
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result: ChatMemberUpdated = update.my_chat_member
 
@@ -58,7 +80,6 @@ async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= WELCOME SYSTEM =================
-
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.new_chat_members:
         return
@@ -66,7 +87,7 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         name = member.first_name
 
-        await asyncio.sleep(random.randint(1, 3))  # ⏳ delay
+        await asyncio.sleep(random.randint(1, 3))
 
         msg = random.choice([
             f"{name}… late aaye ho 😏",
@@ -79,7 +100,6 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= TAG ALL =================
-
 async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type not in ["group", "supergroup"]:
         return await update.message.reply_text("group me use karo")
@@ -100,7 +120,6 @@ async def tagall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= LEADERBOARD =================
-
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_users = get_top_users()
 
@@ -116,14 +135,12 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= DATABASE =================
-
 async def database(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = len(get_top_users(1000))
     await update.message.reply_text(f"total users: {total}")
 
 
 # ================= REVIVE =================
-
 async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     inactive = get_inactive_users()
 
@@ -137,7 +154,6 @@ async def revive(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= BROADCAST =================
-
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
@@ -167,7 +183,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= MAIN MESSAGE =================
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -183,40 +198,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.message.chat_id
 
-    # SAVE GROUP
     if chat_type in ["group", "supergroup"]:
         save_group(chat_id)
 
-    # SAVE USER
     update_user(user.id, name)
 
-    # ================= JEALOUSY =================
-
-    if chat_type in ["group", "supergroup"]:
-        if "deepsikha" not in text_lower and not is_reply:
-            if random.randint(1, 100) <= 12:
-                msg = random.choice([
-                    "hmm… mujhe ignore karke dusro se baat 😒",
-                    "acha… ab main boring lag rahi hu?",
-                    "mere bina bhi kaafi baate ho rahi hai 😏",
-                    "thoda mujhe bhi yaad kar liya karo",
-                ])
-                return await update.message.reply_text(msg)
-
-    # ================= QUICK RESPONSES =================
-
-    if "who are you" in text_lower or "tum kaun ho" in text_lower:
-        return await update.message.reply_text(
-            "main Deepsikha hu… thodi alag hu sab se 😌"
-        )
-
-    if "owner" in text_lower:
-        return await update.message.reply_text(
-            "AAKASH mera creator hai… kaafi special hai wo 😏"
-        )
-
     # ================= TRIGGER =================
-
     triggered = (
         chat_type == "private"
         or f"@{bot_username}" in text_lower
@@ -228,41 +215,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ================= AI =================
-
     try:
         reply = await generate_reply(user.id, name, text)
     except:
-        return await update.message.reply_text("thoda network issue hai… phir bolo 😌")
+        return await update.message.reply_text("thoda issue hai… phir bolo 😌")
 
     # ================= DELAY =================
-
     delay = random.randint(2, 6)
 
     for _ in range(max(1, delay // 2)):
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         await asyncio.sleep(1)
 
     await asyncio.sleep(delay / 2)
 
     await update.message.reply_text(reply)
 
-    # ================= RANDOM REACTION =================
-
-    if random.randint(1, 100) <= 8:
-        await asyncio.sleep(random.randint(5, 15))
-
-        msgs = [
-            "sab itne chup kyun hai aaj",
-            "koi interesting banda hai yaha?",
-            "mujhe ignore kar rahe ho kya 😒",
-            "itna dead group kyun hai",
-        ]
-
-        await context.bot.send_message(chat_id, random.choice(msgs))
-
 
 # ================= AUTO MESSAGE =================
-
 async def auto_message(context: ContextTypes.DEFAULT_TYPE):
     msgs = [
         "aaj sab itne chup kyu hai",
@@ -279,7 +249,6 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
 
 
 # ================= MAIN =================
-
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
