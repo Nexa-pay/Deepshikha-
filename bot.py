@@ -28,8 +28,7 @@ from config import (
     OWNER_ID,
     MIN_DELAY,
     MAX_DELAY,
-    PHOTO_CHANCE,
-    ENABLE_VOICE
+    PHOTO_CHANCE
 )
 
 # SAFE IMPORT
@@ -49,41 +48,10 @@ except ImportError:
 from ai import (
     generate_reply,
     get_random_image,
-    should_send_image,
-    detect_reply_mood
+    should_send_image
 )
 
-from voice import text_to_voice, delete_voice
-
 logging.basicConfig(level=logging.INFO)
-
-
-# ================= NEW: FLIRTY TAG =================
-def get_flirty_tag(name, relationship):
-    if relationship > 150:
-        return random.choice([
-            f"{name}… tum sirf mere ho 😏",
-            f"{name}, ignore mat karo mujhe 💔",
-            f"{name}, main jealous ho jaungi 😒"
-        ])
-    elif relationship > 80:
-        return random.choice([
-            f"{name}… yaad aa rahe the 😌",
-            f"{name}, itne chup kyun ho 😏",
-            f"{name}, mujhe ignore kar rahe ho kya 🙂"
-        ])
-    elif relationship > 30:
-        return random.choice([
-            f"{name}, kya chal raha hai 😌",
-            f"{name}, baat nahi karoge? 🙂",
-            f"{name}, thoda active ho jao 😏"
-        ])
-    else:
-        return random.choice([
-            f"{name}, itna silent kyun 😄",
-            f"{name}, group me ho ya ghost 👻",
-            f"{name}, hello bol do 😌"
-        ])
 
 
 # ================= MEMORY =================
@@ -96,35 +64,6 @@ def init_memory(app):
 
     if "active_users" not in app.bot_data:
         app.bot_data["active_users"] = {}
-
-
-# ================= STICKERS =================
-def load_stickers():
-    data = {}
-    current = None
-
-    try:
-        with open("stickers/ids.txt") as f:
-            for line in f:
-                line = line.strip()
-
-                if not line:
-                    continue
-
-                if line.startswith("#"):
-                    current = line.replace("#", "").strip()
-                    data[current] = []
-                else:
-                    if current:
-                        data[current].append(line)
-
-    except Exception as e:
-        print("Sticker load error:", e)
-
-    return data
-
-
-STICKERS = load_stickers()
 
 
 # ================= START =================
@@ -237,13 +176,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         update_user(user.id, user.first_name)
 
-        # ACTIVE USERS
-        user_list = context.application.bot_data["active_users"].setdefault(chat_id, [])
-        if user.id not in user_list:
-            user_list.append(user.id)
-        context.application.bot_data["active_users"][chat_id] = user_list[-20:]
-
-        # IMAGE
+        # ================= IMAGE =================
         if should_send_image(text):
             if random.randint(1, 100) <= PHOTO_CHANCE:
                 await context.bot.send_photo(chat_id, get_random_image())
@@ -251,53 +184,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("itni jaldi photo? 😏")
             return
 
-        # ================= FIXED QUICK REPLIES =================
+        # ================= QUICK REPLIES =================
         quick_reply = None
 
         if any(x in text_lower for x in ["hi", "hello", "hey"]):
-            quick_reply = random.choice([
-                "hii… tum yaad aaye 😌",
-                "hello… finally aaye 😏",
-                "hey… kahan the tum 🙂"
-            ])
+            quick_reply = "hello 🙂"
 
         elif "good morning" in text_lower:
-            quick_reply = random.choice([
-                "good morning… khayal rakhna 😌",
-                "morning… smile karo 🙂",
-                "gm… aaj mujhe yaad kiya? 😏"
-            ])
+            quick_reply = "good morning 🙂"
 
         elif "good night" in text_lower:
-            quick_reply = random.choice([
-                "good night… sapno me aana 😌",
-                "gn… miss karungi 😏",
-                "jaldi sojao… main yahi hu 🙂"
-            ])
+            quick_reply = "good night 🙂"
 
         elif "bye" in text_lower:
-            quick_reply = random.choice([
-                "bye… jaldi aana 😌",
-                "itni jaldi ja rahe ho? 😏",
-                "theek hai… miss karungi 🙂"
-            ])
-
-        elif "dm" in text_lower:
-            quick_reply = random.choice([
-                "dm me aao na 😏",
-                "private me baat kare? 😌",
-                "yaha sab dekh rahe hain 🙂"
-            ])
+            quick_reply = "bye 🙂"
 
         if quick_reply:
             await update.message.reply_text(quick_reply)
+            return  # ✅ FIX: stop double reply
 
-        # TRIGGER
+        # ================= TRIGGER =================
         triggered = (
             chat_type == "private"
             or f"@{bot_username}" in text_lower
             or (is_reply and is_reply.from_user and is_reply.from_user.id == context.bot.id)
-            or "deepsikha" in text_lower
         )
 
         if not triggered:
@@ -307,13 +217,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         history = context.application.bot_data["last_replies"].get(user.id, [])
 
-        # ✅ FIXED REPEAT
+        # ================= FIX REPEAT =================
         if reply in history:
             reply = random.choice([
                 "hmm… aur bolo 😌",
-                "acha interesting 😏",
-                "tum alag ho 🙂",
-                "continue karo na 😄"
+                "acha samjha 🙂",
+                "continue karo 🙂",
+                "interesting 😄"
             ])
 
         history.append(reply)
@@ -328,42 +238,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(delay / 2)
 
         await update.message.reply_text(reply)
-
-        # ================= SMART STICKER =================
-        try:
-            user_data = users.find_one({"user_id": user.id}) or {}
-            relationship = int(user_data.get("relationship", 0))
-
-            mood = detect_reply_mood(reply)
-
-            force = any(x in text_lower for x in ["sticker", "gif", "bhej"])
-
-            if relationship < 30:
-                chance = 10
-            elif relationship < 70:
-                chance = 25
-            elif relationship < 120:
-                chance = 45
-            else:
-                chance = 70
-
-            if mood in ["love", "kiss"]:
-                chance += 15
-
-            chance = min(chance, 85)
-
-            send = True if force else random.randint(1, 100) <= chance
-
-            if send and mood in STICKERS and STICKERS[mood]:
-                selected = random.choice(STICKERS[mood])
-
-                if selected.startswith("http"):
-                    await context.bot.send_animation(chat_id, selected)
-                else:
-                    await context.bot.send_sticker(chat_id, selected)
-
-        except Exception as e:
-            print("Sticker error:", e)
 
     except Exception as e:
         print("Main handler error:", e)
@@ -381,27 +255,7 @@ async def auto_message(context: ContextTypes.DEFAULT_TYPE):
             if random.randint(1, 100) > 3:
                 continue
 
-            active_users = context.application.bot_data.get("active_users", {}).get(chat_id, [])
-
-            if not active_users:
-                await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
-                continue
-
-            user_id = random.choice(active_users)
-            user_data = users.find_one({"user_id": user_id}) or {}
-            relationship = int(user_data.get("relationship", 0))
-
-            try:
-                member = await context.bot.get_chat_member(chat_id, user_id)
-                name = member.user.first_name
-
-                text = get_flirty_tag(name, relationship)
-                text += f" [{name}](tg://user?id={user_id})"
-
-                await context.bot.send_message(chat_id, text, parse_mode="Markdown")
-
-            except:
-                await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
+            await context.bot.send_message(chat_id, "sab chup kyun hai 😏")
 
         except Exception as e:
             print("Auto message error:", e)
