@@ -26,7 +26,7 @@ def is_night():
     return hour >= 23 or hour <= 5
 
 
-# ================= IMAGE (FIX ADDED) =================
+# ================= IMAGE =================
 
 IMAGE_URLS = [
     "https://raw.githubusercontent.com/Nexa-pay/Deepshikha-/main/image/IMG_4830.jpg"
@@ -103,38 +103,28 @@ async def generate_reply(user_id, name, text):
         relationship = int(user_data.get("relationship", 0))
         last_reply = user_data.get("last_reply", "")
 
-        # ================= MOOD =================
+        # ================= PROMPT FIX =================
         if is_question(text):
-            mood = "smart helpful, slightly friendly"
-        elif relationship > 120:
-            mood = "possessive flirty"
-        elif relationship > 70:
-            mood = "playful flirty"
-        else:
-            mood = "teasing"
-
-        if night:
-            mood += ", soft romantic"
-
-        # ================= PROMPT =================
-        system_prompt = f"""
-You are ALWAYS a real Indian girl.
-
-PERSONALITY:
-- sweet, caring, emotional
-- natural Hinglish
-- not robotic
-
-BEHAVIOR:
-- if question → give correct answer
-- if normal → flirty + emotional
-- if sad → comfort
+            system_prompt = """
+You are a helpful assistant.
 
 RULES:
-- short replies
-- never say you are AI
+- Answer the question correctly
+- Give factual answer
+- No flirting
+- No emotional lines
+- Keep it short and clear
+"""
+        else:
+            system_prompt = """
+You are a natural human conversational assistant.
 
-MOOD: {mood}
+RULES:
+- Reply only according to user message
+- No unrelated lines
+- No random flirting
+- Keep natural Hinglish tone
+- Keep reply short and meaningful
 """
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -173,21 +163,20 @@ MOOD: {mood}
         reply = clean_reply(reply)
         reply = smart_short(reply)
 
-        # ================= ANTI REPEAT =================
+        # ================= ANTI REPEAT FIX =================
         recent = [h.get("text") for h in history[-6:] if h.get("role") == "bot"]
 
-        if reply in recent:
+        if reply in recent or reply == last_reply:
             reply = random.choice([
                 "acha aur bolo 😏",
                 "hmm… interesting 😌",
                 "continue karo 🙂",
-                "tum interesting ho 😄"
+                "samajh gaya 👍"
             ])
 
-        # ================= MERGE =================
+        # ================= FORCED (FIXED) =================
         if forced_reply and not is_question(text):
-            if random.randint(1, 100) < 40:
-                reply = forced_reply
+            reply = forced_reply
 
         # ================= SAVE =================
         users.update_one(
