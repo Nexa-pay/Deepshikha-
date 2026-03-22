@@ -16,6 +16,11 @@ from database import users
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
+# ================= DEBUG =================
+print("✅ AI FILE LOADED")
+print("🔑 API KEY:", OPENROUTER_API_KEY)
+
+
 # ================= TIME =================
 def is_night():
     india = pytz.timezone("Asia/Kolkata")
@@ -49,6 +54,9 @@ def short_reply(reply):
 # ================= MAIN =================
 async def generate_reply(user_id, name, text):
     try:
+        print("🔥 AI FUNCTION STARTED")
+        print("📩 USER:", text)
+
         user_data = users.find_one({"user_id": user_id}) or {}
         history = user_data.get("history", [])
         last_reply = user_data.get("last_reply", "")
@@ -60,7 +68,6 @@ You are a smart Indian girl.
 
 RULES:
 - Answer correctly
-- Add slight natural tone
 - Hinglish only
 - Max 12 words
 - No explanation
@@ -71,7 +78,6 @@ You are a real Indian girl chatting.
 
 RULES:
 - Natural reply
-- Relevant to message
 - Hinglish only
 - Max 12 words
 """
@@ -87,10 +93,12 @@ RULES:
 
         messages.append({"role": "user", "content": text})
 
-        # ================= API CALL WITH RETRY =================
         reply = None
 
-        for _ in range(2):
+        # ================= API RETRY =================
+        for attempt in range(2):
+            print(f"📡 API CALL ATTEMPT {attempt+1}")
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(API_URL, headers={
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -103,9 +111,14 @@ RULES:
                 }) as res:
 
                     if res.status != 200:
+                        print("❌ API STATUS:", res.status)
+                        error_text = await res.text()
+                        print("❌ ERROR:", error_text)
                         continue
 
                     result = await res.json()
+                    print("📥 RESPONSE:", result)
+
                     reply = result.get("choices", [{}])[0].get("message", {}).get("content")
 
                     if reply:
@@ -113,16 +126,21 @@ RULES:
 
         # ================= FALLBACK =================
         if not reply:
-            return random.choice([
+            print("⚠️ USING FALLBACK")
+
+            fallback_pool = [
                 "samajh nahi aaya… phir bolo 😌",
-                "thoda clear bolo na 😏",
-                "tum confusing ho 😄"
-            ])
+                "thoda clearly bolo na 😏",
+                "tum confusing ho 😄",
+                "phir se try karo 🙂"
+            ]
+
+            return random.choice(fallback_pool)
 
         reply = clean_reply(reply)
         reply = short_reply(reply)
 
-        # ================= SOFT ANTI-REPEAT =================
+        # ================= ANTI REPEAT =================
         if reply == last_reply:
             reply += random.choice([" 😏", " hmm", " acha"])
 
@@ -144,10 +162,12 @@ RULES:
             upsert=True
         )
 
+        print("🤖 FINAL REPLY:", reply)
+
         return reply
 
     except Exception as e:
-        print("AI ERROR:", e)
+        print("❌ AI ERROR:", e)
         return "thoda issue hai… phir try karo 😌"
 
 
