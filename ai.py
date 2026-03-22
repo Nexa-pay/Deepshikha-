@@ -1,95 +1,118 @@
 import aiohttp
-import re
-from config import TOGETHER_API_KEY, HF_API_KEY, MODEL, HF_MODEL, TEMPERATURE, MAX_TOKENS
+import random
 
-TOGETHER_URL = "https://api.together.xyz/v1/chat/completions"
-HF_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+print("✅ AI FILE LOADED")
 
-print("AI CALLED")
+# ================= BASIC FACTS (NO FAIL SYSTEM) =================
 
-# ================= CLEAN =================
-def clean_reply(reply):
-    reply = re.sub(r"\*.*?\*", "", reply)
-    reply = re.sub(r"\(.*?\)", "", reply)
-    reply = re.sub(r"\s+", " ", reply).strip()
-    return reply
+def basic_answer(text):
+    t = text.lower()
 
+    if "capital of india" in t:
+        return "New Delhi 🙂"
 
-# ================= TOGETHER =================
-async def call_together(text):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            TOGETHER_URL,
-            headers={
-                "Authorization": f"Bearer {TOGETHER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": "Reply in Hinglish, max 8 words."},
-                    {"role": "user", "content": text}
-                ],
-                "temperature": TEMPERATURE,
-                "max_tokens": MAX_TOKENS
-            }
-        ) as res:
+    if "pm of india" in t or "prime minister of india" in t:
+        return "Narendra Modi 😌"
 
-            if res.status != 200:
-                return None
+    if "president of india" in t:
+        return "Droupadi Murmu 🙂"
 
-            data = await res.json()
-
-    return data["choices"][0]["message"]["content"]
-
-
-# ================= HUGGINGFACE =================
-async def call_hf(text):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            HF_URL,
-            headers={
-                "Authorization": f"Bearer {HF_API_KEY}"
-            },
-            json={
-                "inputs": f"Reply short Hinglish: {text}",
-                "parameters": {
-                    "max_new_tokens": 50
-                }
-            }
-        ) as res:
-
-            if res.status != 200:
-                return None
-
-            data = await res.json()
-
-    if isinstance(data, list):
-        return data[0].get("generated_text", "")
+    if "who are you" in t or "tum kaun ho" in t:
+        return "main Deepsikha hu… yaad rakhna 😏"
 
     return None
 
 
-# ================= MAIN =================
-async def generate_reply(user_id, name, text):
+# ================= TOGETHER API =================
+
+TOGETHER_API_KEY = "YOUR_TOGETHER_API_KEY"
+
+async def call_together(text):
     try:
-        # 1️⃣ Try Together
-        reply = await call_together(text)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.together.xyz/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {TOGETHER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "mistralai/Mistral-7B-Instruct-v0.1",
+                    "messages": [
+                        {"role": "system", "content": "Reply short, Hinglish, natural."},
+                        {"role": "user", "content": text}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 60
+                }
+            ) as res:
 
-        if reply:
-            print("✅ Using Together")
-        else:
-            print("⚠️ Together failed, using HF")
-            reply = await call_hf(text)
+                if res.status != 200:
+                    return None
 
-        if not reply:
-            return "server busy hai 😌"
-
-        reply = clean_reply(reply)
-        reply = " ".join(reply.split()[:8])
-
-        return reply
+                data = await res.json()
+                return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        print("AI ERROR:", e)
-        return "error aa gaya 😌"
+        print("Together error:", e)
+        return None
+
+
+# ================= HUGGINGFACE API =================
+
+HF_API_KEY = "YOUR_HF_API_KEY"
+
+async def call_hf(text):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
+                headers={"Authorization": f"Bearer {HF_API_KEY}"},
+                json={"inputs": text}
+            ) as res:
+
+                if res.status != 200:
+                    return None
+
+                data = await res.json()
+
+                if isinstance(data, list):
+                    return data[0].get("generated_text", None)
+
+                return None
+
+    except Exception as e:
+        print("HF error:", e)
+        return None
+
+
+# ================= MAIN =================
+
+async def generate_reply(user_id, name, text):
+    print("🔥 AI CALLED:", text)
+
+    # ✅ 1. Basic answers (instant)
+    basic = basic_answer(text)
+    if basic:
+        return basic
+
+    # ✅ 2. Together API
+    reply = await call_together(text)
+    if reply:
+        return reply[:80]
+
+    print("⚠️ Together failed")
+
+    # ✅ 3. HuggingFace fallback
+    reply = await call_hf(text)
+    if reply:
+        return reply[:80]
+
+    print("⚠️ HF failed")
+
+    # ❌ Final fallback
+    return random.choice([
+        "server busy… phir try karo 😌",
+        "thoda wait karo… fir pucho 😏",
+        "abhi slow hai… try again 🙂"
+    ])
