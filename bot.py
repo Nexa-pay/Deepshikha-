@@ -12,8 +12,8 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, MIN_DELAY, MAX_DELAY, PHOTO_CHANCE
-from ai import generate_reply, should_send_image, get_random_image
+from config import BOT_TOKEN, MIN_DELAY, MAX_DELAY
+from ai import generate_reply
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,12 +36,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.message.chat_id
         user = update.message.from_user
         text = update.message.text.strip()
-
-        # ================= IMAGE =================
-        if should_send_image(text):
-            if random.randint(1, 100) <= PHOTO_CHANCE:
-                await context.bot.send_photo(chat_id, get_random_image())
-            return
 
         # ================= AI =================
         reply = await generate_reply(user.id, user.first_name, text)
