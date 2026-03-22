@@ -18,7 +18,6 @@ from ai import generate_reply
 logging.basicConfig(level=logging.INFO)
 
 
-# ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("finally aaye tum 😏")
 
@@ -27,7 +26,6 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("bot active hai 😌")
 
 
-# ================= MAIN =================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not update.message or not update.message.text:
@@ -37,10 +35,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.message.from_user
         text = update.message.text.strip()
 
-        # ================= AI =================
         reply = await generate_reply(user.id, user.first_name, text)
 
-        # ================= HUMAN DELAY =================
         delay = random.randint(MIN_DELAY, MAX_DELAY)
 
         for _ in range(max(1, delay // 2)):
@@ -55,7 +51,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Handler error:", e)
 
 
-# ================= MAIN =================
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
