@@ -1,9 +1,11 @@
 import aiohttp
-import random
+from config import OPENROUTER_API_KEY, MODEL, TEMPERATURE, MAX_TOKENS
+from database import get_history
 
 print("✅ AI FILE LOADED")
 
-# ================= BASIC FACTS (NO FAIL SYSTEM) =================
+
+# ================= BASIC ANSWERS =================
 
 def basic_answer(text):
     t = text.lower()
@@ -11,79 +13,42 @@ def basic_answer(text):
     if "capital of india" in t:
         return "New Delhi 🙂"
 
-    if "pm of india" in t or "prime minister of india" in t:
+    if "pm of india" in t:
         return "Narendra Modi 😌"
 
     if "president of india" in t:
         return "Droupadi Murmu 🙂"
 
-    if "who are you" in t or "tum kaun ho" in t:
-        return "main Deepsikha hu… yaad rakhna 😏"
+    if "captain of india" in t:
+        return "Rohit Sharma 🏏"
 
     return None
 
 
-# ================= TOGETHER API =================
+# ================= AI CALL =================
 
-TOGETHER_API_KEY = "YOUR_TOGETHER_API_KEY"
+async def call_ai(messages):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": MODEL,
+                "messages": messages,
+                "temperature": TEMPERATURE,
+                "max_tokens": MAX_TOKENS
+            }
+        ) as res:
 
-async def call_together(text):
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.together.xyz/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {TOGETHER_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "mistralai/Mistral-7B-Instruct-v0.1",
-                    "messages": [
-                        {"role": "system", "content": "Reply short, Hinglish, natural."},
-                        {"role": "user", "content": text}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 60
-                }
-            ) as res:
-
-                if res.status != 200:
-                    return None
-
-                data = await res.json()
-                return data["choices"][0]["message"]["content"]
-
-    except Exception as e:
-        print("Together error:", e)
-        return None
-
-
-# ================= HUGGINGFACE API =================
-
-HF_API_KEY = "YOUR_HF_API_KEY"
-
-async def call_hf(text):
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
-                headers={"Authorization": f"Bearer {HF_API_KEY}"},
-                json={"inputs": text}
-            ) as res:
-
-                if res.status != 200:
-                    return None
-
-                data = await res.json()
-
-                if isinstance(data, list):
-                    return data[0].get("generated_text", None)
-
+            if res.status != 200:
+                print("❌ API ERROR:", res.status)
                 return None
 
-    except Exception as e:
-        print("HF error:", e)
-        return None
+            data = await res.json()
+            return data["choices"][0]["message"]["content"]
 
 
 # ================= MAIN =================
@@ -91,28 +56,33 @@ async def call_hf(text):
 async def generate_reply(user_id, name, text):
     print("🔥 AI CALLED:", text)
 
-    # ✅ 1. Basic answers (instant)
+    # ✅ 1. Basic answer
     basic = basic_answer(text)
     if basic:
         return basic
 
-    # ✅ 2. Together API
-    reply = await call_together(text)
-    if reply:
-        return reply[:80]
+    # ✅ 2. Get memory
+    history = get_history(user_id)
 
-    print("⚠️ Together failed")
+    messages = [
+        {
+            "role": "system",
+            "content": "Reply short Hinglish, natural, slightly flirty"
+        }
+    ]
 
-    # ✅ 3. HuggingFace fallback
-    reply = await call_hf(text)
-    if reply:
-        return reply[:80]
+    for h in history[-10:]:
+        messages.append({
+            "role": h["role"],
+            "content": h["text"]
+        })
 
-    print("⚠️ HF failed")
+    messages.append({"role": "user", "content": text})
 
-    # ❌ Final fallback
-    return random.choice([
-        "server busy… phir try karo 😌",
-        "thoda wait karo… fir pucho 😏",
-        "abhi slow hai… try again 🙂"
-    ])
+    # ✅ 3. AI call
+    reply = await call_ai(messages)
+
+    if not reply:
+        return "network slow hai… phir bolo 😌"
+
+    return reply.strip()[:100]
