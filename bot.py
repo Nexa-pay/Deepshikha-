@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 from config import BOT_TOKEN, MIN_DELAY, MAX_DELAY
-from database import update_user
+from database import update_user, save_message
 from ai import generate_reply
 
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("finally aaye tum 😏")
 
 
-# ================= MAIN =================
+# ================= MESSAGE =================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -38,25 +38,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         update_user(user.id, user.first_name)
 
-        # ================= AI =================
+        # 🤖 AI reply
         reply = await generate_reply(user.id, user.first_name, text)
 
-        # ================= HUMAN DELAY =================
+        # ⏳ typing delay
         delay = random.randint(MIN_DELAY, MAX_DELAY)
 
         for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(
-                chat_id=chat_id,
-                action=ChatAction.TYPING
-            )
+            await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
 
         await update.message.reply_text(reply)
 
+        # 💾 save memory
+        save_message(user.id, text, reply)
+
     except Exception as e:
-        print("Handler error:", e)
+        print("❌ Handler error:", e)
 
 
 # ================= MAIN =================
