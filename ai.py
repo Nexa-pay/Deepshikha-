@@ -5,6 +5,7 @@ from config import TOGETHER_API_KEY, HF_API_KEY, MODEL, HF_MODEL, TEMPERATURE, M
 TOGETHER_URL = "https://api.together.xyz/v1/chat/completions"
 HF_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
 
+print("AI CALLED")
 
 # ================= CLEAN =================
 def clean_reply(reply):
