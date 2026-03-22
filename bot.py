@@ -1,4 +1,3 @@
-import os
 import logging
 import random
 import asyncio
@@ -13,21 +12,19 @@ from telegram.ext import (
     filters,
 )
 
-from database import update_user
-from ai import generate_reply
+from config import BOT_TOKEN, MIN_DELAY, MAX_DELAY, PHOTO_CHANCE
+from ai import generate_reply, should_send_image, get_random_image
 
 logging.basicConfig(level=logging.INFO)
-
-TOKEN = os.getenv("BOT_TOKEN")
 
 
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("hii… bolo kya baat hai 😏")
+    await update.message.reply_text("finally aaye tum 😏")
 
 
 async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("AI active hai 😌")
+    await update.message.reply_text("bot active hai 😌")
 
 
 # ================= MAIN =================
@@ -36,28 +33,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message or not update.message.text:
             return
 
+        chat_id = update.message.chat_id
         user = update.message.from_user
         text = update.message.text.strip()
-        chat_id = update.message.chat_id
 
-        # save user
-        update_user(user.id, user.first_name)
-
-        print("📩 USER:", text)
+        # ================= IMAGE =================
+        if should_send_image(text):
+            if random.randint(1, 100) <= PHOTO_CHANCE:
+                await context.bot.send_photo(chat_id, get_random_image())
+            return
 
         # ================= AI =================
         reply = await generate_reply(user.id, user.first_name, text)
 
-        print("🤖 AI:", reply)
-
         # ================= HUMAN DELAY =================
-        delay = random.randint(2, 5)
+        delay = random.randint(MIN_DELAY, MAX_DELAY)
 
         for _ in range(max(1, delay // 2)):
-            await context.bot.send_chat_action(
-                chat_id=chat_id,
-                action=ChatAction.TYPING
-            )
+            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
             await asyncio.sleep(1)
 
         await asyncio.sleep(delay / 2)
@@ -65,19 +58,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
 
     except Exception as e:
-        print("❌ ERROR:", e)
-        await update.message.reply_text("thoda issue hai… phir try karo 😌")
+        print("Handler error:", e)
 
 
 # ================= MAIN =================
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("🚀 AI Bot running...")
+    print("Bot running... 😏")
     app.run_polling(drop_pending_updates=True)
 
 
