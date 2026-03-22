@@ -1,8 +1,9 @@
 import aiohttp
 import re
-from config import TOGETHER_API_KEY, MODEL, TEMPERATURE, MAX_TOKENS
+from config import TOGETHER_API_KEY, HF_API_KEY, MODEL, HF_MODEL, TEMPERATURE, MAX_TOKENS
 
-API_URL = "https://api.together.xyz/v1/chat/completions"
+TOGETHER_URL = "https://api.together.xyz/v1/chat/completions"
+HF_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
 
 
 # ================= CLEAN =================
@@ -13,56 +14,80 @@ def clean_reply(reply):
     return reply
 
 
-# ================= AI =================
+# ================= TOGETHER =================
+async def call_together(text):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            TOGETHER_URL,
+            headers={
+                "Authorization": f"Bearer {TOGETHER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": "Reply in Hinglish, max 8 words."},
+                    {"role": "user", "content": text}
+                ],
+                "temperature": TEMPERATURE,
+                "max_tokens": MAX_TOKENS
+            }
+        ) as res:
+
+            if res.status != 200:
+                return None
+
+            data = await res.json()
+
+    return data["choices"][0]["message"]["content"]
+
+
+# ================= HUGGINGFACE =================
+async def call_hf(text):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            HF_URL,
+            headers={
+                "Authorization": f"Bearer {HF_API_KEY}"
+            },
+            json={
+                "inputs": f"Reply short Hinglish: {text}",
+                "parameters": {
+                    "max_new_tokens": 50
+                }
+            }
+        ) as res:
+
+            if res.status != 200:
+                return None
+
+            data = await res.json()
+
+    if isinstance(data, list):
+        return data[0].get("generated_text", "")
+
+    return None
+
+
+# ================= MAIN =================
 async def generate_reply(user_id, name, text):
     try:
-        system_prompt = """
-You are a real girl chatting on Telegram.
+        # 1️⃣ Try Together
+        reply = await call_together(text)
 
-Rules:
-- Hinglish only
-- Max 8 words
-- One line only
-- No explanation
-- No roleplay
+        if reply:
+            print("✅ Using Together")
+        else:
+            print("⚠️ Together failed, using HF")
+            reply = await call_hf(text)
 
-Behavior:
-- If question → correct answer
-- If normal → slightly flirty
-"""
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                API_URL,
-                headers={
-                    "Authorization": f"Bearer {TOGETHER_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": text}
-                    ],
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS
-                }
-            ) as res:
-
-                if res.status != 200:
-                    print("API ERROR:", res.status)
-                    return "server busy hai 😌"
-
-                data = await res.json()
-
-        reply = data["choices"][0]["message"]["content"]
+        if not reply:
+            return "server busy hai 😌"
 
         reply = clean_reply(reply)
-
-        # limit words
         reply = " ".join(reply.split()[:8])
 
-        return reply or "samajh nahi aaya 😌"
+        return reply
 
     except Exception as e:
         print("AI ERROR:", e)
