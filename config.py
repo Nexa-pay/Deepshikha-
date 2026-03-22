@@ -1,6 +1,21 @@
 import os
 
-# ================= CORE =================
+# ================= API =================
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+if not OPENROUTER_API_KEY:
+    raise ValueError("❌ OPENROUTER_API_KEY missing")
+
+
+# ================= MODEL =================
+
+MODEL = "deepseek/deepseek-chat"
+TEMPERATURE = 0.7
+MAX_TOKENS = 80
+
+
+# ================= BOT =================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -8,33 +23,18 @@ if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN missing")
 
 
-# ================= AI KEYS =================
+# ================= DATABASE =================
 
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-HF_API_KEY = os.getenv("HF_API_KEY")
+MONGO_URI = os.getenv("MONGO_URI")
 
-# (optional but recommended warning)
-if not TOGETHER_API_KEY:
-    print("⚠️ TOGETHER_API_KEY missing")
-
-if not HF_API_KEY:
-    print("⚠️ HF_API_KEY missing")
+if not MONGO_URI:
+    raise ValueError("❌ MONGO_URI missing")
 
 
-# ================= AI SETTINGS =================
-
-MODEL = "mistralai/Mistral-7B-Instruct-v0.1"
-
-TEMPERATURE = 0.7
-MAX_TOKENS = 60
-
-
-# ================= HUMAN BEHAVIOR =================
+# ================= DELAY =================
 
 MIN_DELAY = 2
 MAX_DELAY = 5
 
-
-# ================= START =================
 
 print("✅ Config Loaded")
